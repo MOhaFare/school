@@ -1,0 +1,55 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans antialiased;
+  }
+  
+  /* Improve scrollbar aesthetics for a cleaner look */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full hover:bg-slate-400 transition-colors;
+  }
+}
+
+@layer utilities {
+  @media print {
+    .print-grid-container {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+
+    .print-card-wrapper {
+      page-break-inside: avoid;
+    }
+
+    .print-card-wrapper > div {
+      transform: scale(0.95);
+      transform-origin: top center;
+      margin: 0 auto;
+    }
+    
+    /* Hide non-printable elements */
+    nav, header, aside, button, .no-print {
+      display: none !important;
+    }
+    
+    main {
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+  }
+}
