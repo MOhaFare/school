@@ -55,6 +55,8 @@ const StudentAdmission: React.FC = () => {
         student_role: formData.student_role,
         shift: formData.shift,
         school_id: formData.school_id,
+        student_house: formData.student_house,
+        category_id: formData.category_id || null,
         avatar: undefined as string | undefined,
       };
       

@@ -40,6 +40,8 @@ export interface Student {
   student_role?: string;
   shift?: 'Morning' | 'Afternoon';
   school_id?: string;
+  student_house?: string;
+  category_id?: string;
 }
 
 export interface School {

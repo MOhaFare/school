@@ -32,7 +32,9 @@ const transformStudentToCamelCase = (dbStudent: any): Student => ({
   parent_phone: dbStudent.parent_phone,
   student_role: dbStudent.student_role,
   shift: dbStudent.shift,
-  school_id: dbStudent.school_id, // Ensure school_id is mapped
+  school_id: dbStudent.school_id,
+  student_house: dbStudent.student_house,
+  category_id: dbStudent.category_id,
 });
 
 const Students: React.FC = () => {
@@ -154,6 +156,8 @@ const Students: React.FC = () => {
         parent_phone: formData.parent_phone,
         student_role: formData.student_role,
         shift: formData.shift,
+        student_house: formData.student_house,
+        category_id: formData.category_id || null,
         avatar: selectedStudent?.avatar,
       };
       
@@ -428,6 +432,16 @@ const Students: React.FC = () => {
                 <p className="text-sm text-slate-900 mt-1">Enrolled: {selectedStudent.enrollmentDate}</p>
                 <p className="text-sm text-slate-700">ID: {selectedStudent.id}</p>
             </div>
+            {selectedStudent.parent_name && (
+                <div className="p-3 bg-slate-50 rounded-lg col-span-2">
+                    <p className="text-xs font-medium text-slate-500 uppercase">Parent Details</p>
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                        <p className="text-sm text-slate-900"><span className="text-slate-500">Name:</span> {selectedStudent.parent_name}</p>
+                        <p className="text-sm text-slate-900"><span className="text-slate-500">Phone:</span> {selectedStudent.parent_phone}</p>
+                        <p className="text-sm text-slate-900 col-span-2"><span className="text-slate-500">Email:</span> {selectedStudent.parent_email}</p>
+                    </div>
+                </div>
+            )}
           </div>
         </Modal>
       )}
