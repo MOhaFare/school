@@ -20,7 +20,7 @@ const PromoteStudents: React.FC = () => {
   const [isPromoting, setIsPromoting] = useState(false);
 
   // Expanded Options
-  const classes = ['Lower', 'Upper', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 'Graduated'];
+  const classes = ['KG1', 'KG2', 'KG3', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', 'Graduated'];
   const sections = ['A', 'B', 'C'];
 
   const fetchStudents = async () => {
@@ -84,7 +84,7 @@ const PromoteStudents: React.FC = () => {
       const updateData: any = {
         class: targetClass,
         section: targetSection,
-        grade: targetClass === 'Graduated' ? 'Graduated' : (targetClass === 'Lower' || targetClass === 'Upper' ? `${targetClass} Class` : `Grade ${targetClass}`)
+        grade: targetClass === 'Graduated' ? 'Graduated' : (targetClass.startsWith('KG') ? targetClass : `Grade ${targetClass}`)
       };
 
       if (targetClass === 'Graduated') {

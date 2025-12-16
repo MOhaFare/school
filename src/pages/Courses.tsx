@@ -38,6 +38,8 @@ const Courses: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile?.school_id) return;
+      
       setLoading(true);
       try {
         const [
@@ -45,9 +47,9 @@ const Courses: React.FC = () => {
           { data: teachersData, error: teachersError },
           { data: departmentsData, error: departmentsError }
         ] = await Promise.all([
-          supabase.from('courses').select('*').order('name'),
-          supabase.from('teachers').select('id, name'),
-          supabase.from('departments').select('id, name')
+          supabase.from('courses').select('*').eq('school_id', profile.school_id).order('name'),
+          supabase.from('teachers').select('id, name').eq('school_id', profile.school_id),
+          supabase.from('departments').select('id, name').eq('school_id', profile.school_id)
         ]);
 
         if (coursesError) throw coursesError;
@@ -64,7 +66,7 @@ const Courses: React.FC = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [profile]);
 
   const enrichedCourses = useMemo(() => {
     return courses.map(course => ({
@@ -102,9 +104,10 @@ const Courses: React.FC = () => {
         const courseToSave = {
           name: formData.name,
           code: formData.code,
-          teacher_id: formData.teacherId,
-          department_id: formData.departmentId,
+          teacher_id: formData.teacherId || null, // Handle empty string
+          department_id: formData.departmentId || null, // Handle empty string
           credits: formData.credits,
+          school_id: profile?.school_id
         };
 
         if (formData.id) {

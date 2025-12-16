@@ -10,8 +10,8 @@ interface ExamFormProps {
 }
 
 const subjects = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'History', 'Geography', 'Computer Science', 'Amharic', 'General Science', 'Social Studies'];
-// Expanded class list
-const classes = ['Lower', 'Upper', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+// Updated class list: KG1 to 12
+const classes = ['KG1', 'KG2', 'KG3', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
 
 const ExamForm = forwardRef<HTMLFormElement, ExamFormProps>(({ exam, onSubmit }, ref) => {
   const [formData, setFormData] = useState({

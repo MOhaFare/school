@@ -92,7 +92,7 @@ const Departments: React.FC = () => {
       (async () => {
         const deptToSave = {
           name: formData.name,
-          head_of_department_id: formData.headOfDepartmentId,
+          head_of_department_id: formData.headOfDepartmentId || null, // Handle empty string
           description: formData.description,
         };
         if (formData.id) {

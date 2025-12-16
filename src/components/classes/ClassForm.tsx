@@ -12,28 +12,35 @@ interface ClassFormProps {
   onSubmit: (data: { name: string; teacher_id: string; capacity: number; id?: string; school_id?: string }) => void;
 }
 
-const grades = ['Lower', 'Upper', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+// Updated grades list: KG1 to 12
+const grades = ['KG1', 'KG2', 'KG3', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
 
 const ClassForm = forwardRef<HTMLFormElement, ClassFormProps>(({ schoolClass, teachers, onSubmit }, ref) => {
   const { profile } = useGlobal();
   
   // State for form fields
   const [grade, setGrade] = useState(grades[0]);
-  const [section, setSection] = useState('A');
+  const [section, setSection] = useState('');
   const [teacherId, setTeacherId] = useState(teachers[0]?.id || '');
   const [capacity, setCapacity] = useState(30);
   const [schoolId, setSchoolId] = useState<string | undefined>(profile?.school_id);
   
   // State for dynamic sections
-  const [availableSections, setAvailableSections] = useState<string[]>(['A', 'B', 'C']);
+  const [availableSections, setAvailableSections] = useState<string[]>([]);
 
   // Fetch sections from DB
   useEffect(() => {
     const fetchSections = async () => {
       const { data } = await supabase.from('sections').select('name').order('name');
       if (data && data.length > 0) {
-        setAvailableSections(data.map(s => s.name));
-        if (!schoolClass) setSection(data[0].name);
+        const sections = data.map(s => s.name);
+        setAvailableSections(sections);
+        // Set default section if not editing
+        if (!schoolClass) setSection(sections[0]);
+      } else {
+        // Fallback if no sections defined
+        setAvailableSections(['A', 'B', 'C']);
+        if (!schoolClass) setSection('A');
       }
     };
     fetchSections();
@@ -52,7 +59,7 @@ const ClassForm = forwardRef<HTMLFormElement, ClassFormProps>(({ schoolClass, te
       } else {
         // Fallback if format doesn't match
         setGrade(grades[0]);
-        setSection(availableSections[0] || 'A');
+        // Keep existing section logic or default
       }
 
       setTeacherId(schoolClass.teacher.id);
@@ -61,12 +68,12 @@ const ClassForm = forwardRef<HTMLFormElement, ClassFormProps>(({ schoolClass, te
     } else {
       // Defaults for new class
       setGrade(grades[0]);
-      setSection(availableSections[0] || 'A');
+      // Section is set in fetchSections
       setTeacherId(teachers[0]?.id || '');
       setCapacity(30);
       setSchoolId(profile?.school_id);
     }
-  }, [schoolClass, teachers, profile, availableSections]);
+  }, [schoolClass, teachers, profile]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,14 +105,20 @@ const ClassForm = forwardRef<HTMLFormElement, ClassFormProps>(({ schoolClass, te
         </div>
         <div className="space-y-2">
           <Label htmlFor="section">Section</Label>
-          <Select 
-            id="section" 
-            value={section} 
-            onChange={(e) => setSection(e.target.value)} 
-            required
-          >
-            {availableSections.map(s => <option key={s} value={s}>{s}</option>)}
-          </Select>
+          {availableSections.length > 0 ? (
+            <Select 
+              id="section" 
+              value={section} 
+              onChange={(e) => setSection(e.target.value)} 
+              required
+            >
+              {availableSections.map(s => <option key={s} value={s}>{s}</option>)}
+            </Select>
+          ) : (
+            <div className="text-sm text-red-500 mt-2">
+              No sections found. Please add sections in Academics &gt; Sections.
+            </div>
+          )}
         </div>
       </div>
 

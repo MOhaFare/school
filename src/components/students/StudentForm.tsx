@@ -6,7 +6,7 @@ import { Select } from '../ui/Select';
 import ImageUpload from '../ui/ImageUpload';
 import { supabase } from '../../lib/supabaseClient';
 import { useGlobal } from '../../context/GlobalContext';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, AlertCircle } from 'lucide-react';
 
 interface StudentFormProps {
   student?: Student | null;
@@ -16,21 +16,25 @@ interface StudentFormProps {
   }) => void;
 }
 
-const classOptions = ['Lower', 'Upper', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
-
 const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, onSubmit }, ref) => {
   const { profile } = useGlobal();
+  
+  // Dynamic Options State
+  const [availableClasses, setAvailableClasses] = useState<{grade: string, section: string}[]>([]);
+  const [gradeOptions, setGradeOptions] = useState<string[]>([]);
+  const [sectionOptions, setSectionOptions] = useState<string[]>([]);
+  
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    class: '9',
-    section: 'A',
+    class: '',
+    section: '',
     rollNumber: '',
     phone: '',
     enrollmentDate: new Date().toISOString().split('T')[0],
     dob: '',
     status: 'active' as 'active' | 'inactive' | 'alumni' | 'suspended',
-    grade: 'Grade 9',
+    grade: '',
     user_id: null as string | null,
     parent_name: '',
     parent_email: '',
@@ -39,10 +43,11 @@ const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, on
     shift: 'Morning' as 'Morning' | 'Afternoon',
     school_id: profile?.school_id || '',
     category_id: '',
+    student_house: '',
   });
+  
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [availableUsers, setAvailableUsers] = useState<{ id: string; email: string }[]>([]);
-  const [sections, setSections] = useState<string[]>(['A', 'B', 'C']);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
 
@@ -55,38 +60,94 @@ const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, on
     setFormData(prev => ({ ...prev, rollNumber: generateRollNumber() }));
   };
 
+  // 1. Fetch Initial Data (Classes, Users, Categories)
   useEffect(() => {
-    const fetchUsers = async () => {
-      const { data, error } = await supabase.rpc('get_unlinked_users', { role_name: 'student' });
-      if (error) console.error('Error fetching unlinked users:', error);
-      else setAvailableUsers(data || []);
-    };
-    fetchUsers();
+    const fetchData = async () => {
+      if (!profile?.school_id && profile?.role !== 'system_admin') return;
 
-    const fetchSections = async () => {
-      const { data } = await supabase.from('sections').select('name').order('name');
-      if (data && data.length > 0) {
-        setSections(data.map(s => s.name));
+      // Fetch Classes
+      let classQuery = supabase.from('classes').select('name');
+      if (profile?.role !== 'system_admin') {
+          classQuery = classQuery.eq('school_id', profile?.school_id);
+      }
+      const { data: classesData } = await classQuery;
+
+      if (classesData) {
+        // Parse "Class 9-A" into {grade: "9", section: "A"}
+        const parsedClasses = classesData.map(c => {
+            const cleanName = c.name.replace('Class ', '');
+            const parts = cleanName.split('-');
+            if (parts.length >= 2) {
+                return { grade: parts[0], section: parts[1] };
+            }
+            return null;
+        }).filter(c => c !== null) as {grade: string, section: string}[];
+
+        setAvailableClasses(parsedClasses);
+
+        // Extract unique grades for the first dropdown
+        const uniqueGrades = Array.from(new Set(parsedClasses.map(c => c.grade))).sort((a, b) => {
+             // Custom sort for KG1, KG2, KG3, 1, 2...
+             const order = ['KG1', 'KG2', 'KG3', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
+             const idxA = order.indexOf(a);
+             const idxB = order.indexOf(b);
+             if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+             return a.localeCompare(b);
+        });
+        setGradeOptions(uniqueGrades);
+        
+        // Set default class/section if creating new and options exist
+        if (!student && uniqueGrades.length > 0 && !formData.class) {
+            const defaultGrade = uniqueGrades[0];
+            const defaultSections = parsedClasses.filter(c => c.grade === defaultGrade).map(c => c.section).sort();
+            setFormData(prev => ({
+                ...prev,
+                class: defaultGrade,
+                section: defaultSections[0] || '',
+                grade: defaultGrade.startsWith('KG') ? defaultGrade : `Grade ${defaultGrade}`
+            }));
+        }
+      }
+
+      // Fetch Unlinked Users
+      const { data: usersData } = await supabase.rpc('get_unlinked_users', { role_name: 'student' });
+      setAvailableUsers(usersData || []);
+
+      // Fetch Categories
+      const { data: catData } = await supabase.from('student_categories').select('id, name').order('name');
+      if (catData) setCategories(catData);
+
+      // Fetch Schools (Super Admin)
+      if (profile?.role === 'system_admin') {
+          const { data: schoolData } = await supabase.from('schools').select('id, name').eq('is_active', true).order('name');
+          if (schoolData) setSchools(schoolData);
       }
     };
-    fetchSections();
 
-    const fetchCategories = async () => {
-      const { data } = await supabase.from('student_categories').select('id, name').order('name');
-      if (data) setCategories(data);
-    };
-    fetchCategories();
+    fetchData();
+  }, [profile, student]); // Re-run if student prop changes (edit mode) to ensure defaults don't override
 
-    // Fetch schools if Super Admin
-    if (profile?.role === 'system_admin') {
-        const fetchSchools = async () => {
-            const { data } = await supabase.from('schools').select('id, name').eq('is_active', true).order('name');
-            if (data) setSchools(data);
-        };
-        fetchSchools();
+  // 2. Update Section Options when Class Changes
+  useEffect(() => {
+    if (formData.class) {
+        const sections = availableClasses
+            .filter(c => c.grade === formData.class)
+            .map(c => c.section)
+            .sort();
+        setSectionOptions(sections);
+        
+        // If current section is invalid for new class, reset it
+        if (!sections.includes(formData.section) && sections.length > 0) {
+            setFormData(prev => ({ ...prev, section: sections[0] }));
+        } else if (sections.length === 0) {
+             setFormData(prev => ({ ...prev, section: '' }));
+        }
+    } else {
+        setSectionOptions([]);
     }
-  }, [profile]);
+  }, [formData.class, availableClasses]);
 
+  // 3. Initialize Form Data from Prop
   useEffect(() => {
     if (student) {
       setFormData({
@@ -108,29 +169,21 @@ const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, on
         shift: student.shift || 'Morning',
         school_id: student.school_id || profile?.school_id || '',
         category_id: (student as any).category_id || '',
+        student_house: (student as any).student_house || '',
       });
       setImageFile(null);
-    } else {
-      // Initialize with automatic 7-digit roll number
-      setFormData({
-        name: '', email: '', class: '9', section: sections[0] || 'A', 
-        rollNumber: generateRollNumber(), 
-        phone: '',
-        enrollmentDate: new Date().toISOString().split('T')[0], dob: '', status: 'active', grade: 'Grade 9', user_id: null,
-        parent_name: '', parent_email: '', parent_phone: '', student_role: '', shift: 'Morning',
-        school_id: profile?.school_id || '',
-        category_id: '',
-      });
-      setImageFile(null);
+    } else if (!formData.rollNumber) {
+      // Only set initial roll number if not already set (prevents overwrite on re-renders)
+      setFormData(prev => ({ ...prev, rollNumber: generateRollNumber() }));
     }
-  }, [student, profile, sections]);
+  }, [student, profile]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => {
       const updates = { [name]: value === 'null' ? null : value };
       if (name === 'class') {
-        updates['grade'] = value === 'Lower' || value === 'Upper' ? `${value} Class` : `Grade ${value}`;
+        updates['grade'] = value.startsWith('KG') ? value : `Grade ${value}`;
       }
       return { ...prev, ...updates };
     });
@@ -175,17 +228,34 @@ const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, on
           <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange} required />
         </div>
       </div>
+
+      {/* Dynamic Class & Section Selection */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label htmlFor="class">Class</Label>
-          <Select id="class" name="class" value={formData.class} onChange={handleChange}>
-            {classOptions.map(c => <option key={c} value={c}>{c}</option>)}
-          </Select>
+          {gradeOptions.length > 0 ? (
+            <Select id="class" name="class" value={formData.class} onChange={handleChange} required>
+                <option value="">Select Class</option>
+                {gradeOptions.map(c => <option key={c} value={c}>{c}</option>)}
+            </Select>
+          ) : (
+            <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700 flex items-center">
+                <AlertCircle size={12} className="mr-1"/> No classes found. Please create classes first.
+            </div>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="section">Section</Label>
-          <Select id="section" name="section" value={formData.section} onChange={handleChange}>
-            {sections.map(s => <option key={s} value={s}>{s}</option>)}
+          <Select 
+            id="section" 
+            name="section" 
+            value={formData.section} 
+            onChange={handleChange} 
+            required
+            disabled={!formData.class || sectionOptions.length === 0}
+          >
+            <option value="">Select Section</option>
+            {sectionOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </Select>
         </div>
         <div className="space-y-2">
@@ -210,6 +280,7 @@ const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, on
           </div>
         </div>
       </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="phone">Phone</Label>

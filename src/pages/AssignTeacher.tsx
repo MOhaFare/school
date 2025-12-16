@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Save, Search } from 'lucide-react';
+import { Users, Save, Search, BookOpen } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Select';
 import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { SchoolClass, Teacher } from '../types';
+import EmptyState from '../components/ui/EmptyState';
+import { useNavigate } from 'react-router-dom';
 
 const AssignTeacher: React.FC = () => {
+  const navigate = useNavigate();
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,8 +23,8 @@ const AssignTeacher: React.FC = () => {
       setLoading(true);
       try {
         const [classesRes, teachersRes] = await Promise.all([
-          supabase.from('classes').select('*'),
-          supabase.from('teachers').select('id, name')
+          supabase.from('classes').select('*').order('name'),
+          supabase.from('teachers').select('id, name').order('name')
         ]);
 
         if (classesRes.error) throw classesRes.error;
@@ -34,12 +37,14 @@ const AssignTeacher: React.FC = () => {
             // Batch assignment updates
             if (c.teacher_id) {
                 initialAssignments[c.id] = c.teacher_id;
+            } else {
+                initialAssignments[c.id] = ''; // Explicitly set empty for unassigned
             }
             
             const teacher = teachersRes.data?.find((t: any) => t.id === c.teacher_id);
             return {
                 ...c,
-                name: `Class ${c.name}`,
+                name: c.name.startsWith('Class ') ? c.name : `Class ${c.name}`,
                 teacher: { id: teacher?.id || '', name: teacher?.name || 'Unassigned' }
             };
         });
@@ -62,20 +67,21 @@ const AssignTeacher: React.FC = () => {
 
   const handleSave = async (classId: string) => {
     const teacherId = assignments[classId];
-    if (!teacherId) return;
+    // Allow empty string to unassign (set to null)
+    const updateValue = teacherId === '' ? null : teacherId;
 
     setSaving(true);
     try {
-      const { error } = await supabase.from('classes').update({ teacher_id: teacherId }).eq('id', classId);
+      const { error } = await supabase.from('classes').update({ teacher_id: updateValue }).eq('id', classId);
       if (error) throw error;
       
       // Update local state to reflect the change immediately
       const teacher = teachers.find(t => t.id === teacherId);
-      setClasses(prev => prev.map(c => c.id === classId ? { ...c, teacher: { id: teacher?.id || '', name: teacher?.name || 'Unknown' } } : c));
+      setClasses(prev => prev.map(c => c.id === classId ? { ...c, teacher: { id: teacher?.id || '', name: teacher?.name || 'Unassigned' } } : c));
       
-      toast.success('Teacher assigned successfully');
+      toast.success(updateValue ? 'Teacher assigned successfully' : 'Teacher unassigned successfully');
     } catch (error: any) {
-      toast.error(`Failed to assign teacher: ${error.message}`);
+      toast.error(`Failed to update assignment: ${error.message}`);
     } finally {
       setSaving(false);
     }
@@ -86,6 +92,26 @@ const AssignTeacher: React.FC = () => {
   );
 
   if (loading) return <TableSkeleton title="Assign Class Teacher" headers={['Class Name', 'Current Teacher', 'Assign New Teacher', 'Action']} />;
+
+  if (classes.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Assign Class Teacher</h1>
+            <p className="text-slate-500">Manage class teacher allocations</p>
+          </div>
+        </div>
+        <EmptyState 
+            icon={BookOpen}
+            title="No Classes Found"
+            description="You need to create classes before you can assign teachers to them."
+            actionLabel="Go to Classes"
+            onAction={() => navigate('/classes')}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -133,7 +159,7 @@ const AssignTeacher: React.FC = () => {
                     onChange={e => handleAssignmentChange(cls.id, e.target.value)}
                     className="w-full max-w-xs"
                   >
-                    <option value="">Select Teacher</option>
+                    <option value="">-- Unassigned --</option>
                     {teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                   </Select>
                 </td>
@@ -141,7 +167,7 @@ const AssignTeacher: React.FC = () => {
                   <Button 
                     size="sm" 
                     onClick={() => handleSave(cls.id)} 
-                    disabled={saving || assignments[cls.id] === cls.teacher.id}
+                    disabled={saving || assignments[cls.id] === (cls.teacher.id === 'N/A' || cls.teacher.name === 'Unassigned' ? '' : cls.teacher.id)}
                   >
                     <Save size={16} className="mr-1"/> Save
                   </Button>
@@ -149,7 +175,7 @@ const AssignTeacher: React.FC = () => {
               </tr>
             ))}
             {filteredClasses.length === 0 && (
-                <tr><td colSpan={4} className="p-8 text-center text-slate-500">No classes found.</td></tr>
+                <tr><td colSpan={4} className="p-8 text-center text-slate-500">No classes found matching search.</td></tr>
             )}
           </tbody>
         </table>
