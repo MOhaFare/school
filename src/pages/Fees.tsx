@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, Plus, Edit, Trash2, Download, DollarSign, Filter, Layers } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Download, DollarSign, Filter, Layers, Printer } from 'lucide-react';
 import { Fee, Student } from '../types';
 import Modal from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
 import FeeForm from '../components/fees/FeeForm';
 import GenerateFeesModal from '../components/fees/GenerateFeesModal';
+import FeeReceipt from '../components/fees/FeeReceipt';
 import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
@@ -12,8 +13,10 @@ import { useGlobal } from '../context/GlobalContext';
 import Badge from '../components/ui/Badge';
 import { formatCurrency, formatDate } from '../utils/format';
 import EmptyState from '../components/ui/EmptyState';
+import { useReactToPrint } from 'react-to-print';
 
 const Fees: React.FC = () => {
+  const { schoolName, schoolAddress, schoolPhone, schoolEmail, schoolLogo, profile } = useGlobal();
   const [fees, setFees] = useState<Fee[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,13 +25,23 @@ const Fees: React.FC = () => {
   // Modals
   const [isModalOpen, setModalOpen] = useState(false);
   const [isGenerateModalOpen, setGenerateModalOpen] = useState(false);
+  const [isReceiptModalOpen, setReceiptModalOpen] = useState(false);
+  
   const [selectedFee, setSelectedFee] = useState<Fee | null>(null);
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { schoolFee, createNotification } = useGlobal();
+  const { createNotification } = useGlobal();
 
   const formRef = useRef<HTMLFormElement>(null);
+  const receiptRef = useRef<HTMLDivElement>(null);
+
+  const isAdminOrCashier = ['system_admin', 'admin', 'principal', 'cashier'].includes(profile?.role || '');
+
+  const handlePrintReceipt = useReactToPrint({
+    content: () => receiptRef.current,
+    documentTitle: `Receipt-${selectedFee?.id}`,
+  });
 
   const fetchData = async () => {
     setLoading(true);
@@ -38,17 +51,23 @@ const Fees: React.FC = () => {
         { data: studentsData, error: studentsError }
       ] = await Promise.all([
         supabase.from('fees').select('*').order('due_date', { ascending: true }),
-        supabase.from('students').select('id, name, user_id')
+        supabase.from('students').select('*')
       ]);
 
       if (feesError) throw feesError;
       if (studentsError) throw studentsError;
 
       setFees(feesData || []);
-      setStudents(studentsData || []);
+      setStudents(studentsData.map((s: any) => ({
+        id: s.id,
+        name: s.name,
+        rollNumber: s.roll_number,
+        class: s.class,
+        section: s.section,
+        // ... other fields
+      } as Student)) || []);
     } catch (error: any) {
-      const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-      toast.error(`Failed to load data: ${errorMessage}`);
+      toast.error(`Failed to load data: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -80,6 +99,11 @@ const Fees: React.FC = () => {
     setModalOpen(true);
   };
 
+  const handleReceipt = (fee: Fee) => {
+    setSelectedFee(fee);
+    setReceiptModalOpen(true);
+  };
+
   const handleDelete = (fee: Fee) => {
     setSelectedFee(fee);
     setDeleteModalOpen(true);
@@ -92,7 +116,7 @@ const Fees: React.FC = () => {
         const feeToSave = {
           student_id: formData.student_id,
           description: formData.description,
-          amount: formData.description === 'Tuition Fee' ? schoolFee : formData.amount,
+          amount: formData.amount,
           due_date: formData.due_date,
           status: formData.status,
           payment_date: formData.status === 'paid' ? formData.payment_date || new Date().toISOString().split('T')[0] : null,
@@ -162,16 +186,18 @@ const Fees: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Fees Management</h1>
           <p className="text-slate-500 mt-1">Track and manage student fee payments</p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={() => setGenerateModalOpen(true)} variant="secondary" className="border border-slate-200 bg-white text-blue-600 hover:bg-blue-50">
-            <Layers size={18} className="mr-2" />
-            Generate Fees
-          </Button>
-          <Button onClick={handleAdd} className="shadow-md shadow-blue-500/20">
-            <Plus size={18} className="mr-2" />
-            Add Fee Record
-          </Button>
-        </div>
+        {isAdminOrCashier && (
+          <div className="flex gap-2">
+            <Button onClick={() => setGenerateModalOpen(true)} variant="secondary" className="border border-slate-200 bg-white text-blue-600 hover:bg-blue-50">
+              <Layers size={18} className="mr-2" />
+              Generate Fees
+            </Button>
+            <Button onClick={handleAdd} className="shadow-md shadow-blue-500/20">
+              <Plus size={18} className="mr-2" />
+              Add Fee Record
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-card border border-slate-200 p-4">
@@ -219,9 +245,14 @@ const Fees: React.FC = () => {
                     </Badge>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                     <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon" onClick={() => handleEdit(fee)} title="Edit"><Edit className="h-4 w-4 text-slate-500 hover:text-amber-600" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(fee)} title="Delete"><Trash2 className="h-4 w-4 text-slate-500 hover:text-rose-600" /></Button>
+                     <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => handleReceipt(fee)} title="Print Receipt"><Printer className="h-4 w-4 text-slate-500 hover:text-blue-600" /></Button>
+                        {isAdminOrCashier && (
+                          <>
+                            <Button variant="ghost" size="icon" onClick={() => handleEdit(fee)} title="Edit"><Edit className="h-4 w-4 text-slate-500 hover:text-amber-600" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(fee)} title="Delete"><Trash2 className="h-4 w-4 text-slate-500 hover:text-rose-600" /></Button>
+                          </>
+                        )}
                      </div>
                   </td>
                 </tr>
@@ -234,9 +265,9 @@ const Fees: React.FC = () => {
             <EmptyState 
                 icon={DollarSign}
                 title="No fee records found"
-                description="Try adjusting your search or add a new fee record."
-                actionLabel="Add Fee Record"
-                onAction={handleAdd}
+                description={isAdminOrCashier ? "Try adjusting your search or add a new fee record." : "You have no fee records to display."}
+                actionLabel={isAdminOrCashier ? "Add Fee Record" : undefined}
+                onAction={isAdminOrCashier ? handleAdd : undefined}
             />
         )}
       </div>
@@ -269,6 +300,40 @@ const Fees: React.FC = () => {
             fetchData(); // Refresh list
           }} 
         />
+      </Modal>
+
+      {/* Receipt Modal */}
+      <Modal
+        isOpen={isReceiptModalOpen}
+        onClose={() => setReceiptModalOpen(false)}
+        title="Fee Receipt"
+        footer={
+          <Button onClick={handlePrintReceipt}>
+            <Printer size={18} className="mr-2" /> Print Receipt
+          </Button>
+        }
+      >
+        <div className="bg-gray-100 p-4 rounded overflow-auto max-h-[60vh]">
+          {selectedFee && (
+            <div className="scale-90 origin-top">
+              <FeeReceipt 
+                ref={receiptRef}
+                fee={{
+                  ...selectedFee,
+                  studentName: students.find(s => s.id === selectedFee.student_id)?.name,
+                  class: students.find(s => s.id === selectedFee.student_id)?.class,
+                  section: students.find(s => s.id === selectedFee.student_id)?.section,
+                  rollNumber: students.find(s => s.id === selectedFee.student_id)?.rollNumber,
+                }}
+                schoolName={schoolName}
+                schoolAddress={schoolAddress}
+                schoolPhone={schoolPhone}
+                schoolEmail={schoolEmail}
+                schoolLogo={schoolLogo}
+              />
+            </div>
+          )}
+        </div>
       </Modal>
 
       <Modal

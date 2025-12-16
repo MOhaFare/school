@@ -21,6 +21,7 @@ interface NavItem {
   translationKey?: string;
   icon: React.ElementType;
   path?: string;
+  featureKey?: string; // Added: Key to check against enabled features
   children?: { title: string; path: string; icon?: React.ElementType }[];
 }
 
@@ -36,17 +37,20 @@ const adminNavStructure: NavItem[] = [
     title: 'Dashboard',
     translationKey: 'dashboard',
     icon: LayoutDashboard, 
-    path: '/' 
+    path: '/',
+    featureKey: 'dashboard'
   },
   {
     title: 'Front Office',
     icon: ClipboardList,
-    path: '/front-office'
+    path: '/front-office',
+    featureKey: 'front-office'
   },
   {
     title: 'Student Information',
     translationKey: 'studentInfo',
     icon: GraduationCap,
+    featureKey: 'student-info',
     children: [
       { title: 'Student Details', path: '/students' },
       { title: 'Student Admission', path: '/students/admission' },
@@ -59,6 +63,7 @@ const adminNavStructure: NavItem[] = [
     title: 'Academics',
     translationKey: 'academics',
     icon: BookOpen,
+    featureKey: 'academics',
     children: [
       { title: 'Class Timetable', path: '/timetable' },
       { title: 'Teachers Timetable', path: '/teachers-timetable' },
@@ -73,27 +78,32 @@ const adminNavStructure: NavItem[] = [
   {
     title: 'Live Classes',
     icon: Video,
-    path: '/live-classes'
+    path: '/live-classes',
+    featureKey: 'live-classes'
   },
   {
     title: 'Lesson Plan',
     icon: CalendarDays,
-    path: '/lesson-plan'
+    path: '/lesson-plan',
+    featureKey: 'lesson-plan'
   },
   {
     title: 'Homework',
     icon: Book,
-    path: '/homework'
+    path: '/homework',
+    featureKey: 'homework'
   },
   {
     title: 'Download Center',
     icon: DownloadCloud,
-    path: '/download-center'
+    path: '/download-center',
+    featureKey: 'download-center'
   },
   {
     title: 'Human Resource',
     translationKey: 'hr',
     icon: Users,
+    featureKey: 'hr',
     children: [
       { title: 'Staff Directory', path: '/teachers' },
       { title: 'Staff Attendance', path: '/staff-attendance' },
@@ -105,6 +115,7 @@ const adminNavStructure: NavItem[] = [
     title: 'Fees Collection',
     translationKey: 'fees',
     icon: DollarSign,
+    featureKey: 'fees',
     children: [
       { title: 'Collect Fees', path: '/fees' },
       { title: 'Search Fees Payment', path: '/fees/search' },
@@ -116,6 +127,7 @@ const adminNavStructure: NavItem[] = [
     title: 'Income & Expenses',
     translationKey: 'finance',
     icon: TrendingUp,
+    featureKey: 'finance',
     children: [
       { title: 'Income', path: '/incomes' },
       { title: 'Add Income', path: '/incomes?action=add' },
@@ -127,6 +139,7 @@ const adminNavStructure: NavItem[] = [
     title: 'Attendance',
     translationKey: 'attendance',
     icon: ClipboardCheck,
+    featureKey: 'attendance',
     children: [
       { title: 'Student Attendance', path: '/attendance' },
       { title: 'Attendance By Date', path: '/attendance/date' },
@@ -137,6 +150,7 @@ const adminNavStructure: NavItem[] = [
     title: 'Examinations',
     translationKey: 'exams',
     icon: FileText,
+    featureKey: 'exams',
     children: [
       { title: 'Exam Group', path: '/exams' },
       { title: 'Exam Schedule', path: '/exams/schedule' },
@@ -149,12 +163,14 @@ const adminNavStructure: NavItem[] = [
   {
     title: 'Online Examinations',
     icon: Monitor,
-    path: '/online-exam'
+    path: '/online-exam',
+    featureKey: 'online-exams'
   },
   {
     title: 'Communicate',
     translationKey: 'communicate',
     icon: MessageSquare,
+    featureKey: 'communicate',
     children: [
       { title: 'Notice Board', path: '/noticeboard' },
       { title: 'Send Email', path: '/email' },
@@ -165,6 +181,7 @@ const adminNavStructure: NavItem[] = [
     title: 'Library',
     translationKey: 'library',
     icon: Library,
+    featureKey: 'library',
     children: [
       { title: 'Book List', path: '/library' },
       { title: 'Add Book', path: '/library?action=add' },
@@ -175,6 +192,7 @@ const adminNavStructure: NavItem[] = [
     title: 'Inventory',
     translationKey: 'inventory',
     icon: Box,
+    featureKey: 'inventory',
     children: [
       { title: 'Item Stock', path: '/inventory' },
       { title: 'Add Item', path: '/inventory/add' },
@@ -185,6 +203,7 @@ const adminNavStructure: NavItem[] = [
     title: 'Transport',
     translationKey: 'transport',
     icon: Bus,
+    featureKey: 'transport',
     children: [
       { title: 'Routes', path: '/transport' },
       { title: 'Vehicles', path: '/transport' },
@@ -195,6 +214,7 @@ const adminNavStructure: NavItem[] = [
     title: 'Hostel',
     translationKey: 'hostel',
     icon: BedDouble,
+    featureKey: 'hostel',
     children: [
       { title: 'Hostel Rooms', path: '/hostel' },
       { title: 'Room Type', path: '/hostel/room-type' },
@@ -203,6 +223,7 @@ const adminNavStructure: NavItem[] = [
   {
     title: 'Certificate',
     icon: Badge,
+    featureKey: 'certificate',
     children: [
       { title: 'Student ID Card', path: '/id-cards' },
       { title: 'Generate Certificate', path: '/certificates' },
@@ -211,12 +232,14 @@ const adminNavStructure: NavItem[] = [
   {
     title: 'Alumni',
     icon: GraduationCap,
-    path: '/alumni'
+    path: '/alumni',
+    featureKey: 'alumni'
   },
   {
     title: 'Reports',
     translationKey: 'reports',
     icon: FilePieChart,
+    featureKey: 'reports',
     children: [
       { title: 'Student Information', path: '/reports' },
       { title: 'Finance', path: '/reports' },
@@ -234,10 +257,11 @@ const adminNavStructure: NavItem[] = [
     title: 'System Settings',
     translationKey: 'settings',
     icon: Settings,
+    featureKey: 'settings',
     children: [
       { title: 'General Settings', path: '/settings' },
       { title: 'Session Settings', path: '/settings' },
-      { title: 'Features', path: '/features' },
+      // Removed 'Features' from here as per request
       { title: 'Departments', path: '/departments' },
     ]
   }
@@ -336,7 +360,7 @@ const getNavItemsForRole = (role: 'admin' | 'teacher' | 'student' | 'cashier' | 
     case 'student': return studentNavStructure;
     case 'cashier': return cashierNavStructure;
     case 'parent': return parentNavStructure;
-    case 'principal': return adminNavStructure; // Principal sees same as Admin
+    case 'principal': return adminNavStructure; 
     case 'admin': default: return adminNavStructure;
   }
 };
@@ -350,7 +374,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { 
     user, signOut, profile, schoolName, schoolLogo,
     language, setLanguage, theme, toggleTheme, t,
-    selectedSession, setSelectedSession, academicYear 
+    selectedSession, setSelectedSession, academicYear,
+    isFeatureEnabled
   } = useGlobal();
   
   const navigate = useNavigate();
@@ -358,7 +383,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Cast role to any to support new roles
-  const navItems = getNavItemsForRole((profile?.role as any) || null);
+  const rawNavItems = getNavItemsForRole((profile?.role as any) || null);
+  
+  // Filter nav items based on enabled features for the school
+  const navItems = rawNavItems.filter(item => {
+    // System admin sees everything in their specific menu
+    if (profile?.role === 'system_admin') return true;
+    // If item has a feature key, check if it's enabled
+    if (item.featureKey) return isFeatureEnabled(item.featureKey);
+    // Default to visible if no key
+    return true;
+  });
+
   const userRoleDisplay = profile?.role ? profile.role.charAt(0).toUpperCase() + profile.role.slice(1).replace('_', ' ') : 'User';
   const userName = profile?.name || user?.email;
 

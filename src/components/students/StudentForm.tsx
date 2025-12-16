@@ -6,17 +6,17 @@ import { Select } from '../ui/Select';
 import ImageUpload from '../ui/ImageUpload';
 import { supabase } from '../../lib/supabaseClient';
 import { useGlobal } from '../../context/GlobalContext';
+import { RefreshCw } from 'lucide-react';
 
 interface StudentFormProps {
   student?: Student | null;
   onSubmit: (data: {
-    formData: Omit<Student, 'id' | 'issuedDate' | 'expiryDate' | 'avatar'> & { id?: string; student_house?: string; category_id?: string };
+    formData: Omit<Student, 'id' | 'issuedDate' | 'expiryDate' | 'avatar'> & { id?: string; category_id?: string };
     imageFile: File | null;
   }) => void;
 }
 
 const classOptions = ['Lower', 'Upper', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'];
-const houseOptions = ['Red House', 'Blue House', 'Green House', 'Yellow House'];
 
 const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, onSubmit }, ref) => {
   const { profile } = useGlobal();
@@ -37,8 +37,7 @@ const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, on
     parent_phone: '',
     student_role: '',
     shift: 'Morning' as 'Morning' | 'Afternoon',
-    school_id: profile?.school_id || '', // Default to current user's school, or empty if Super Admin
-    student_house: '',
+    school_id: profile?.school_id || '',
     category_id: '',
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -46,6 +45,15 @@ const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, on
   const [sections, setSections] = useState<string[]>(['A', 'B', 'C']);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
+
+  // Helper to generate 7-digit roll number
+  const generateRollNumber = () => {
+    return Math.floor(1000000 + Math.random() * 9000000).toString();
+  };
+
+  const handleRegenerateRoll = () => {
+    setFormData(prev => ({ ...prev, rollNumber: generateRollNumber() }));
+  };
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -99,17 +107,18 @@ const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, on
         student_role: student.student_role || '',
         shift: student.shift || 'Morning',
         school_id: student.school_id || profile?.school_id || '',
-        student_house: (student as any).student_house || '',
         category_id: (student as any).category_id || '',
       });
       setImageFile(null);
     } else {
+      // Initialize with automatic 7-digit roll number
       setFormData({
-        name: '', email: '', class: '9', section: sections[0] || 'A', rollNumber: '', phone: '',
+        name: '', email: '', class: '9', section: sections[0] || 'A', 
+        rollNumber: generateRollNumber(), 
+        phone: '',
         enrollmentDate: new Date().toISOString().split('T')[0], dob: '', status: 'active', grade: 'Grade 9', user_id: null,
         parent_name: '', parent_email: '', parent_phone: '', student_role: '', shift: 'Morning',
         school_id: profile?.school_id || '',
-        student_house: '',
         category_id: '',
       });
       setImageFile(null);
@@ -180,8 +189,25 @@ const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, on
           </Select>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="rollNumber">Roll Number</Label>
-          <Input id="rollNumber" name="rollNumber" value={formData.rollNumber} onChange={handleChange} required />
+          <Label htmlFor="rollNumber">Roll Number (Auto)</Label>
+          <div className="flex gap-2">
+            <Input 
+                id="rollNumber" 
+                name="rollNumber" 
+                value={formData.rollNumber} 
+                onChange={handleChange} 
+                required 
+                className="bg-gray-50"
+            />
+            <button 
+                type="button" 
+                onClick={handleRegenerateRoll}
+                className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md border border-gray-200"
+                title="Regenerate Roll Number"
+            >
+                <RefreshCw size={18} />
+            </button>
+          </div>
         </div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -218,21 +244,12 @@ const StudentForm = forwardRef<HTMLFormElement, StudentFormProps>(({ student, on
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-            <Label htmlFor="student_house">School House</Label>
-            <Select id="student_house" name="student_house" value={formData.student_house} onChange={handleChange}>
-                <option value="">Select House</option>
-                {houseOptions.map(h => <option key={h} value={h}>{h}</option>)}
-            </Select>
-        </div>
-        <div className="space-y-2">
-            <Label htmlFor="category_id">Category</Label>
-            <Select id="category_id" name="category_id" value={formData.category_id} onChange={handleChange}>
-                <option value="">Select Category</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-        </div>
+      <div className="space-y-2">
+          <Label htmlFor="category_id">Category</Label>
+          <Select id="category_id" name="category_id" value={formData.category_id} onChange={handleChange}>
+              <option value="">Select Category</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
       </div>
 
       <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider border-b pb-1 pt-4">Parent Information</h3>

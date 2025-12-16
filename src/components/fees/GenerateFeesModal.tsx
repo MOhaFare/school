@@ -29,6 +29,11 @@ const GenerateFeesModal: React.FC<GenerateFeesModalProps> = ({ onClose, onSucces
   const [classes, setClasses] = useState<string[]>([]);
   const [studentCount, setStudentCount] = useState<number | null>(null);
 
+  // Update amount if global schoolFee changes
+  useEffect(() => {
+    setAmount(schoolFee);
+  }, [schoolFee]);
+
   useEffect(() => {
     const fetchClasses = async () => {
       const { data } = await supabase.from('classes').select('name').order('name');
@@ -48,9 +53,6 @@ const GenerateFeesModal: React.FC<GenerateFeesModalProps> = ({ onClose, onSucces
       let query = supabase.from('students').select('id', { count: 'exact', head: true }).eq('status', 'active');
       
       if (selectedClass !== 'all') {
-        // Assuming class name format is "Class-Section" e.g. "10-A"
-        // But in DB students store class="10" and section="A"
-        // And classes table stores name="10-A"
         const parts = selectedClass.split('-');
         if (parts.length >= 1) query = query.eq('class', parts[0]);
         if (parts.length >= 2) query = query.eq('section', parts[1]);
@@ -103,7 +105,6 @@ const GenerateFeesModal: React.FC<GenerateFeesModalProps> = ({ onClose, onSucces
         students.forEach(student => {
           months.forEach((month, index) => {
             // Calculate due date for each month (e.g., 5th of each month)
-            // If current year is 2025, January is 2025-01-05
             const monthDueDate = new Date(year, index, 5).toISOString().split('T')[0];
             
             feesToInsert.push({
@@ -118,7 +119,7 @@ const GenerateFeesModal: React.FC<GenerateFeesModalProps> = ({ onClose, onSucces
         });
       }
 
-      // 3. Insert in batches (Supabase has limits on payload size)
+      // 3. Insert in batches
       const BATCH_SIZE = 100;
       for (let i = 0; i < feesToInsert.length; i += BATCH_SIZE) {
         const batch = feesToInsert.slice(i, i + BATCH_SIZE);
@@ -142,10 +143,9 @@ const GenerateFeesModal: React.FC<GenerateFeesModalProps> = ({ onClose, onSucces
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
         <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
         <div>
-          <h4 className="text-sm font-semibold text-blue-800">Bulk Generation</h4>
+          <h4 className="text-sm font-semibold text-blue-800">Monthly Tuition Fee Generation</h4>
           <p className="text-xs text-blue-600 mt-1">
-            This will create fee records for {studentCount !== null ? <strong>{studentCount}</strong> : 'all'} active students. 
-            Please verify the amount and dates before proceeding.
+            This will create fee records based on the Base Fee ({schoolFee} Birr) for {studentCount !== null ? <strong>{studentCount}</strong> : 'all'} active students. 
           </p>
         </div>
       </div>
@@ -200,6 +200,7 @@ const GenerateFeesModal: React.FC<GenerateFeesModalProps> = ({ onClose, onSucces
         <div className="space-y-2">
           <Label>Amount (Birr)</Label>
           <Input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value))} />
+          <p className="text-xs text-gray-500 mt-1">Default: {schoolFee} (Base Fee)</p>
         </div>
         
         {generationType === 'single' && (

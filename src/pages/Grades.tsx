@@ -1,9 +1,10 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Search, Download, TrendingUp, Award, Plus, Edit, Trash2, Filter, X } from 'lucide-react';
+import { Search, Download, TrendingUp, Award, Plus, Edit, Trash2, Filter, X, Layers } from 'lucide-react';
 import { Grade, Student, Exam } from '../types';
 import Modal from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
 import GradeForm from '../components/grades/GradeForm';
+import BulkGradeEntryModal from '../components/grades/BulkGradeEntryModal';
 import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
@@ -26,6 +27,19 @@ const transformGradeToCamelCase = (dbGrade: any): Grade => ({
   total_marks: 0,
 });
 
+const transformExamToCamelCase = (dbExam: any): Exam => ({
+  id: dbExam.id,
+  created_at: dbExam.created_at,
+  name: dbExam.name,
+  subject: dbExam.subject,
+  class: dbExam.class,
+  date: dbExam.date,
+  totalMarks: dbExam.total_marks,
+  passingMarks: dbExam.passing_marks,
+  duration: dbExam.duration,
+  status: dbExam.status,
+});
+
 const Grades: React.FC = () => {
   const [grades, setGrades] = useState<Grade[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -35,54 +49,52 @@ const Grades: React.FC = () => {
   const [filterExamId, setFilterExamId] = useState<string>('');
   
   const [isModalOpen, setModalOpen] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [selectedGrade, setSelectedGrade] = useState<Grade | null>(null);
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { createNotification } = useGlobal();
+  const { createNotification, profile } = useGlobal();
   const [searchParams, setSearchParams] = useSearchParams();
   const preSelectedExamId = searchParams.get('examId');
   
   const formRef = useRef<HTMLFormElement>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const [
-          { data: gradesData, error: gradesError },
-          { data: studentsData, error: studentsError },
-          { data: examsData, error: examsError }
-        ] = await Promise.all([
-          supabase.from('grades').select('*').order('date', { ascending: false }),
-          supabase.from('students').select('id, name, user_id'),
-          supabase.from('exams').select('id, name, subject, class, total_marks')
-        ]);
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [
+        { data: gradesData, error: gradesError },
+        { data: studentsData, error: studentsError },
+        { data: examsData, error: examsError }
+      ] = await Promise.all([
+        supabase.from('grades').select('*').order('date', { ascending: false }),
+        supabase.from('students').select('id, name, user_id'),
+        supabase.from('exams').select('id, name, subject, class, total_marks, passing_marks, date, duration, status')
+      ]);
 
-        if (gradesError) throw gradesError;
-        if (studentsError) throw studentsError;
-        if (examsError) throw examsError;
+      if (gradesError) throw gradesError;
+      if (studentsError) throw studentsError;
+      if (examsError) throw examsError;
 
-        setGrades((gradesData || []).map(transformGradeToCamelCase));
-        setStudents(studentsData || []);
-        setExams(examsData || []);
+      setGrades((gradesData || []).map(transformGradeToCamelCase));
+      setStudents(studentsData || []);
+      setExams((examsData || []).map(transformExamToCamelCase));
 
-        // If we navigated here with a specific exam ID
-        if (preSelectedExamId) {
-            setFilterExamId(preSelectedExamId);
-            // Also open the modal to add new grades for this exam
-            setTimeout(() => {
-                handleAdd(preSelectedExamId);
-            }, 100);
-        }
-
-      } catch (error: any) {
-        const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-        toast.error(`Failed to load data: ${errorMessage}`);
-        console.error("Error fetching grades data:", error);
-      } finally {
-        setLoading(false);
+      if (preSelectedExamId) {
+          setFilterExamId(preSelectedExamId);
+          // UX Improvement: Auto-open bulk entry if coming from Exams page
+          setIsBulkModalOpen(true);
       }
-    };
+
+    } catch (error: any) {
+      const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
+      toast.error(`Failed to load data: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchData();
   }, []);
 
@@ -95,7 +107,7 @@ const Grades: React.FC = () => {
         studentName: student?.name || grade.student_id,
         examName: exam?.name || grade.exam_id,
         subject: exam?.subject || 'N/A',
-        total_marks: exam?.total_marks || grade.total_marks,
+        total_marks: exam?.totalMarks || grade.total_marks,
       };
     });
   }, [grades, students, exams]);
@@ -112,13 +124,15 @@ const Grades: React.FC = () => {
   });
   
   const handleAdd = (examId?: string | null) => {
-    if (examId) {
-        const preSelectedExam = exams.find(e => e.id === examId);
+    setSelectedGrade(null);
+    if (examId || filterExamId) {
+        const targetId = examId || filterExamId;
+        const preSelectedExam = exams.find(e => e.id === targetId);
         if (preSelectedExam) {
              setSelectedGrade({
                 id: '',
                 student_id: '',
-                exam_id: examId,
+                exam_id: targetId,
                 marks_obtained: 0,
                 percentage: 0,
                 grade: '',
@@ -129,33 +143,6 @@ const Grades: React.FC = () => {
                 subject: '',
                 total_marks: 0
              });
-        } else {
-            setSelectedGrade(null);
-        }
-    } else {
-        // If filtering by an exam, pre-select it in the modal too
-        if (filterExamId) {
-             const preSelectedExam = exams.find(e => e.id === filterExamId);
-             if (preSelectedExam) {
-                 setSelectedGrade({
-                    id: '',
-                    student_id: '',
-                    exam_id: filterExamId,
-                    marks_obtained: 0,
-                    percentage: 0,
-                    grade: '',
-                    gpa: 0,
-                    date: '',
-                    studentName: '',
-                    examName: '',
-                    subject: '',
-                    total_marks: 0
-                 });
-             } else {
-                 setSelectedGrade(null);
-             }
-        } else {
-            setSelectedGrade(null);
         }
     }
     setModalOpen(true);
@@ -183,7 +170,7 @@ const Grades: React.FC = () => {
         const exam = exams.find(e => e.id === formData.examId);
         if (!exam) throw new Error("Selected exam not found.");
 
-        const percentage = (formData.marksObtained / exam.total_marks) * 100;
+        const percentage = (formData.marksObtained / exam.totalMarks) * 100;
         const gpa = percentage >= 90 ? 4.0 : percentage >= 80 ? 3.5 : percentage >= 70 ? 3.0 : percentage >= 60 ? 2.5 : percentage >= 50 ? 2.0 : percentage >= 40 ? 1.5 : 0.0;
         const gradeLetter = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B+' : percentage >= 60 ? 'B' : percentage >= 50 ? 'C+' : percentage >= 40 ? 'C' : percentage >= 33 ? 'D' : 'F';
 
@@ -195,6 +182,7 @@ const Grades: React.FC = () => {
           gpa: parseFloat(gpa.toFixed(2)),
           grade: gradeLetter,
           date: exam.date,
+          school_id: profile?.school_id // Explicitly add school_id
         };
 
         if (formData.id) {
@@ -205,17 +193,6 @@ const Grades: React.FC = () => {
           const { data, error } = await supabase.from('grades').insert(gradeToSave).select().single();
           if (error) throw error;
           setGrades(prev => [transformGradeToCamelCase(data), ...prev]);
-
-          const student = students.find(s => s.id === formData.studentId);
-          if (student?.user_id) {
-            await createNotification({
-              user_id: student.user_id,
-              title: 'New Grade Published',
-              message: `You received a grade of "${gradeLetter}" in ${exam.subject}.`,
-              type: 'grade',
-              link_to: '/results'
-            });
-          }
         }
       })(),
       {
@@ -278,8 +255,12 @@ const Grades: React.FC = () => {
           <p className="text-gray-600 mt-1">Track student academic performance and grades</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary"><Download size={20} className="mr-2" />Export Report</Button>
-          <Button onClick={() => handleAdd(null)}><Plus size={20} className="mr-2" />Add Grade</Button>
+          <Button variant="secondary" onClick={() => setIsBulkModalOpen(true)} className="bg-white border border-slate-200 text-blue-600 hover:bg-blue-50">
+            <Layers size={20} className="mr-2" /> Bulk Entry
+          </Button>
+          <Button onClick={() => handleAdd(null)}>
+            <Plus size={20} className="mr-2" /> Add Grade
+          </Button>
         </div>
       </div>
 
@@ -352,8 +333,25 @@ const Grades: React.FC = () => {
         </div>
       </div>
       
+      {/* Single Entry Modal */}
       <Modal isOpen={isModalOpen} onClose={() => setModalOpen(false)} title={selectedGrade ? 'Edit Grade' : 'Add New Grade'} footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={() => formRef.current?.requestSubmit()} loading={isSubmitting}>{selectedGrade ? 'Save Changes' : 'Add Grade'}</Button></>}>
         <GradeForm ref={formRef} grade={selectedGrade} students={students} exams={exams} onSubmit={handleSaveGrade} />
+      </Modal>
+
+      {/* Bulk Entry Modal */}
+      <Modal 
+        isOpen={isBulkModalOpen} 
+        onClose={() => { setIsBulkModalOpen(false); clearFilters(); }} 
+        title="Bulk Grade Entry" 
+        size="4xl"
+      >
+        <BulkGradeEntryModal 
+            initialExamId={filterExamId}
+            onClose={() => { setIsBulkModalOpen(false); clearFilters(); }} 
+            onSuccess={() => {
+                fetchData();
+            }} 
+        />
       </Modal>
 
       <Modal isOpen={isDeleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Delete Grade" footer={<><Button variant="secondary" onClick={() => setDeleteModalOpen(false)}>Cancel</Button><Button variant="danger" onClick={handleConfirmDelete} loading={isSubmitting}>Delete</Button></>}>

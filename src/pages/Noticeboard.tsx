@@ -20,6 +20,7 @@ const Noticeboard: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formRef = useRef<HTMLFormElement>(null);
+  const canManage = ['system_admin', 'admin', 'principal', 'teacher'].includes(profile?.role || '');
 
   useEffect(() => {
     const fetchNotices = async () => {
@@ -29,9 +30,7 @@ const Noticeboard: React.FC = () => {
         if (error) throw error;
         setNotices(data);
       } catch (error: any) {
-        const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-        toast.error(`Failed to fetch notices: ${errorMessage}`);
-        console.error("Error fetching notices:", error);
+        toast.error(`Failed to fetch notices: ${error.message}`);
       } finally {
         setLoading(false);
       }
@@ -76,7 +75,6 @@ const Noticeboard: React.FC = () => {
           if (error) throw error;
           setNotices(prev => [data, ...prev]);
 
-          // This is a simplified approach. A robust solution would use database triggers.
           const { data: usersToNotify } = await supabase.from('profiles').select('id').in('role', [formData.audience, 'admin']);
           if (usersToNotify) {
             const notifications = usersToNotify.map(u => ({
@@ -132,10 +130,12 @@ const Noticeboard: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Noticeboard</h1>
           <p className="text-gray-600 mt-1">Manage school announcements and notices</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus size={20} className="mr-2" />
-          Post Notice
-        </Button>
+        {canManage && (
+          <Button onClick={handleAdd}>
+            <Plus size={20} className="mr-2" />
+            Post Notice
+          </Button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -156,10 +156,12 @@ const Noticeboard: React.FC = () => {
           <div key={notice.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
             <div className="flex items-start justify-between mb-2">
               <h3 className="font-semibold text-gray-900 text-lg">{notice.title}</h3>
-              <div className="flex items-center">
-                <Button variant="ghost" size="icon" onClick={() => handleEdit(notice)}><Edit className="h-4 w-4" /></Button>
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(notice)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-              </div>
+              {canManage && (
+                <div className="flex items-center">
+                  <Button variant="ghost" size="icon" onClick={() => handleEdit(notice)}><Edit className="h-4 w-4" /></Button>
+                  <Button variant="ghost" size="icon" onClick={() => handleDelete(notice)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
                 <div className="flex items-center"><User size={12} className="mr-1"/>{notice.authorName}</div>

@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { formatCurrency } from '../../utils/format';
 import Badge from '../ui/Badge';
+import { useGlobal } from '../../context/GlobalContext';
 
 const DashboardStatCard: React.FC<{ title: string; value: string; icon: React.ElementType; color: string; loading: boolean; trend?: string; trendUp?: boolean }> = ({ title, value, icon: Icon, color, loading, trend, trendUp }) => {
   if (loading) {
@@ -128,6 +129,7 @@ interface DashboardStats {
 }
 
 const AdminDashboard: React.FC = () => {
+  const { profile } = useGlobal();
   const [students, setStudents] = useState<Student[]>([]);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [performanceData, setPerformanceData] = useState<any[]>([]);
@@ -135,8 +137,30 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     const fetchDashboardData = async () => {
+      // Wait for profile to load to ensure we have the school_id
+      if (!profile) return;
+
       setLoading(true);
       try {
+        // Construct queries with explicit school_id filtering
+        let studentQuery = supabase.from('students').select('*', { count: 'exact', head: true });
+        let teacherQuery = supabase.from('teachers').select('*', { count: 'exact', head: true });
+        let feesQuery = supabase.from('fees').select('amount').eq('status', 'paid');
+        let expensesQuery = supabase.from('expenses').select('amount');
+        let recentStudentsQuery = supabase.from('students').select('*').order('created_at', { ascending: false }).limit(5);
+        let gradesQuery = supabase.from('grades').select('created_at, marks_obtained, exams(total_marks)');
+
+        // Apply School ID filter if not System Admin
+        if (profile.role !== 'system_admin' && profile.school_id) {
+            const schoolId = profile.school_id;
+            studentQuery = studentQuery.eq('school_id', schoolId);
+            teacherQuery = teacherQuery.eq('school_id', schoolId);
+            feesQuery = feesQuery.eq('school_id', schoolId);
+            expensesQuery = expensesQuery.eq('school_id', schoolId);
+            recentStudentsQuery = recentStudentsQuery.eq('school_id', schoolId);
+            gradesQuery = gradesQuery.eq('school_id', schoolId);
+        }
+
         const [
           studentResult,
           teacherResult,
@@ -145,12 +169,12 @@ const AdminDashboard: React.FC = () => {
           recentStudentsResult,
           gradesResult
         ] = await Promise.all([
-          supabase.from('students').select('*', { count: 'exact', head: true }),
-          supabase.from('teachers').select('*', { count: 'exact', head: true }),
-          supabase.from('fees').select('amount').eq('status', 'paid'),
-          supabase.from('expenses').select('amount'),
-          supabase.from('students').select('*').order('created_at', { ascending: false }).limit(5),
-          supabase.from('grades').select('created_at, marks_obtained, exams(total_marks)')
+          studentQuery,
+          teacherQuery,
+          feesQuery,
+          expensesQuery,
+          recentStudentsQuery,
+          gradesQuery
         ]);
 
         const results = { studentResult, teacherResult, feesResult, expensesResult, recentStudentsResult, gradesResult };
@@ -204,9 +228,9 @@ const AdminDashboard: React.FC = () => {
         
         // Fallback data for demo if empty
         const finalChartData = chartData.length > 0 ? chartData : [
-            { name: 'Jan', performance: 65 }, { name: 'Feb', performance: 68 }, 
-            { name: 'Mar', performance: 75 }, { name: 'Apr', performance: 72 },
-            { name: 'May', performance: 80 }
+            { name: 'Jan', performance: 0 }, { name: 'Feb', performance: 0 }, 
+            { name: 'Mar', performance: 0 }, { name: 'Apr', performance: 0 },
+            { name: 'May', performance: 0 }
         ];
         
         setPerformanceData(finalChartData);
@@ -220,14 +244,14 @@ const AdminDashboard: React.FC = () => {
     };
 
     fetchDashboardData();
-  }, []);
+  }, [profile]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Dashboard Overview</h1>
-          <p className="text-slate-500 mt-1">Welcome back, Admin. Here's what's happening today.</p>
+          <p className="text-slate-500 mt-1">Welcome back, {profile?.name || 'Admin'}. Here's what's happening today.</p>
         </div>
         <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-border shadow-sm">
           <button className="px-3 py-1.5 text-sm font-medium bg-slate-100 text-slate-900 rounded-md shadow-sm">Overview</button>

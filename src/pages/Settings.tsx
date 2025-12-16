@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Bell, Lock, School, Landmark, GraduationCap, Image as ImageIcon } from 'lucide-react';
+import { Settings as SettingsIcon, Bell, Lock, School, Landmark, GraduationCap, Image as ImageIcon, Copy } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useGlobal } from '../context/GlobalContext';
@@ -96,6 +96,13 @@ const Settings: React.FC = () => {
     setIsPromoteModalOpen(false);
   };
 
+  const copySchoolId = () => {
+    if (profile?.school_id) {
+      navigator.clipboard.writeText(profile.school_id);
+      toast.success('School ID copied to clipboard');
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div className="flex items-center gap-4">
@@ -111,7 +118,24 @@ const Settings: React.FC = () => {
           <h3 className="text-lg font-semibold text-gray-800 flex items-center"><School className="mr-3 h-5 w-5 text-blue-600"/>General Settings</h3>
         </div>
         <div className="p-6 space-y-4 divide-y">
-          <div className="flex justify-between items-center pt-4 first:pt-0">
+          
+          {/* School ID Display */}
+          <div className="flex justify-between items-center pb-4">
+            <div>
+              <label className="font-medium text-gray-700">School ID</label>
+              <p className="text-sm text-gray-500">Unique identifier for your institution</p>
+            </div>
+            <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-md border border-slate-200">
+                <code className="text-sm text-slate-700 font-mono">{profile?.school_id || 'Not Assigned'}</code>
+                {profile?.school_id && (
+                    <button onClick={copySchoolId} className="text-slate-400 hover:text-blue-600 transition-colors" title="Copy ID">
+                        <Copy size={14} />
+                    </button>
+                )}
+            </div>
+          </div>
+
+          <div className="flex justify-between items-center pt-4">
             <div>
               <label htmlFor="schoolName" className="font-medium text-gray-700">School Name</label>
               {!isEditingName ? (

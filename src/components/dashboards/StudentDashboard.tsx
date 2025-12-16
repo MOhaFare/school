@@ -8,7 +8,7 @@ import { formatCurrency, formatDate } from '../../utils/format';
 import { Student } from '../../types';
 
 const StudentDashboard: React.FC = () => {
-  const { user } = useGlobal();
+  const { user, profile } = useGlobal();
   const [student, setStudent] = useState<Student | null>(null);
   const [stats, setStats] = useState({
     attendanceRate: 0,
@@ -22,17 +22,33 @@ const StudentDashboard: React.FC = () => {
 
   useEffect(() => {
     const fetchStudentData = async () => {
-      if (!user) return;
+      if (!user || !profile?.school_id) return;
       setLoading(true);
       try {
-        // 1. Get Student Details linked to this user
-        const { data: studentData, error: studentError } = await supabase
+        // 1. Try to get Student Details linked to this user_id
+        let { data: studentData, error: studentError } = await supabase
           .from('students')
           .select('*')
           .eq('user_id', user.id)
-          .single();
+          .eq('school_id', profile.school_id)
+          .maybeSingle();
 
-        if (studentError || !studentData) {
+        // 2. Fallback: If not linked by user_id, try finding by email
+        if (!studentData) {
+           const { data: emailMatch } = await supabase
+            .from('students')
+            .select('*')
+            .eq('email', user.email)
+            .eq('school_id', profile.school_id)
+            .maybeSingle();
+            
+           if (emailMatch) {
+             studentData = emailMatch;
+             // Optional: We could try to self-heal the link here, but the migration handles it better
+           }
+        }
+
+        if (!studentData) {
           console.error("Student profile not found linked to user");
           setLoading(false);
           return;
@@ -45,29 +61,34 @@ const StudentDashboard: React.FC = () => {
           // Attendance
           supabase.from('attendance')
             .select('status')
-            .eq('student_id', studentData.id),
+            .eq('student_id', studentData.id)
+            .eq('school_id', profile.school_id),
           
           // Pending Fees
           supabase.from('fees')
             .select('amount')
             .eq('student_id', studentData.id)
+            .eq('school_id', profile.school_id)
             .neq('status', 'paid'),
 
           // Grades (for GPA)
           supabase.from('grades')
             .select('gpa')
-            .eq('student_id', studentData.id),
+            .eq('student_id', studentData.id)
+            .eq('school_id', profile.school_id),
 
           // Active Homework
           supabase.from('homework')
             .select('id', { count: 'exact' })
             .eq('class', studentData.class)
+            .eq('school_id', profile.school_id)
             .eq('status', 'active'),
 
           // Upcoming Exams
           supabase.from('exams')
             .select('*')
             .eq('class', studentData.class)
+            .eq('school_id', profile.school_id)
             .eq('status', 'upcoming')
             .order('date', { ascending: true })
             .limit(3),
@@ -75,7 +96,7 @@ const StudentDashboard: React.FC = () => {
           // Today's Timetable
           supabase.from('timetables')
             .select('*, courses(name), teachers(name)')
-            .eq('class_id', (await supabase.from('classes').select('id').eq('name', `${studentData.class}-${studentData.section}`).single()).data?.id)
+            .eq('class_id', (await supabase.from('classes').select('id').eq('name', `${studentData.class}-${studentData.section}`).eq('school_id', profile.school_id).single()).data?.id)
             .eq('day_of_week', new Date().toLocaleDateString('en-US', { weekday: 'long' }))
             .order('start_time', { ascending: true })
         ]);
@@ -110,7 +131,7 @@ const StudentDashboard: React.FC = () => {
     };
 
     fetchStudentData();
-  }, [user]);
+  }, [user, profile]);
 
   if (loading) {
     return (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, Plus, Edit, Globe, Mail, Phone, CheckCircle, XCircle, UserPlus } from 'lucide-react';
+import { Building2, Plus, Edit, Globe, Mail, Phone, CheckCircle, XCircle, UserPlus, Layers } from 'lucide-react';
 import { School } from '../types';
 import { Button } from '../components/ui/Button';
 import Modal from '../components/ui/Modal';
@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import Badge from '../components/ui/Badge';
 import ImageUpload from '../components/ui/ImageUpload';
 import CreateSchoolAdminModal from '../components/schools/CreateSchoolAdminModal';
+import SchoolFeaturesModal from '../components/schools/SchoolFeaturesModal';
 
 const Schools: React.FC = () => {
   const [schools, setSchools] = useState<School[]>([]);
@@ -20,6 +21,7 @@ const Schools: React.FC = () => {
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [isFeaturesModalOpen, setIsFeaturesModalOpen] = useState(false);
   
   const [selectedSchool, setSelectedSchool] = useState<School | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -74,6 +76,11 @@ const Schools: React.FC = () => {
   const handleOpenAdminModal = (school: School) => {
     setSelectedSchool(school);
     setIsAdminModalOpen(true);
+  };
+
+  const handleOpenFeaturesModal = (school: School) => {
+    setSelectedSchool(school);
+    setIsFeaturesModalOpen(true);
   };
 
   const uploadLogo = async (file: File, schoolId: string): Promise<string | null> => {
@@ -166,13 +173,20 @@ const Schools: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-100">
+            <div className="pt-4 border-t border-slate-100 flex gap-2">
                 <Button 
                     variant="secondary" 
-                    className="w-full text-xs" 
+                    className="flex-1 text-xs" 
+                    onClick={() => handleOpenFeaturesModal(school)}
+                >
+                    <Layers size={14} className="mr-2" /> Features
+                </Button>
+                <Button 
+                    variant="secondary" 
+                    className="flex-1 text-xs" 
                     onClick={() => handleOpenAdminModal(school)}
                 >
-                    <UserPlus size={14} className="mr-2" /> Create Admin
+                    <UserPlus size={14} className="mr-2" /> Admin
                 </Button>
             </div>
           </div>
@@ -236,6 +250,21 @@ const Schools: React.FC = () => {
                 schoolId={selectedSchool.id}
                 schoolName={selectedSchool.name}
                 onClose={() => setIsAdminModalOpen(false)}
+            />
+        )}
+      </Modal>
+
+      {/* Features Modal */}
+      <Modal
+        isOpen={isFeaturesModalOpen}
+        onClose={() => setIsFeaturesModalOpen(false)}
+        title="School Features"
+      >
+        {selectedSchool && (
+            <SchoolFeaturesModal 
+                schoolId={selectedSchool.id}
+                schoolName={selectedSchool.name}
+                onClose={() => setIsFeaturesModalOpen(false)}
             />
         )}
       </Modal>

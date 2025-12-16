@@ -9,8 +9,10 @@ import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { formatDate } from '../utils/format';
+import { useGlobal } from '../context/GlobalContext';
 
 const DownloadCenter: React.FC = () => {
+  const { profile } = useGlobal();
   const [contents, setContents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setModalOpen] = useState(false);
@@ -18,6 +20,8 @@ const DownloadCenter: React.FC = () => {
     title: '', type: 'assignment', class: '', upload_date: new Date().toISOString().split('T')[0], description: '', file_url: ''
   });
   const [file, setFile] = useState<File | null>(null);
+
+  const canUpload = ['system_admin', 'admin', 'principal', 'teacher'].includes(profile?.role || '');
 
   useEffect(() => {
     fetchContents();
@@ -44,7 +48,7 @@ const DownloadCenter: React.FC = () => {
       if (file) {
         const fileExt = file.name.split('.').pop();
         const filePath = `downloads/${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file); // Reusing avatars bucket for demo, ideally create 'documents' bucket
+        const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file); // Reusing avatars bucket for demo
         if (uploadError) throw uploadError;
         const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
         fileUrl = data.publicUrl;
@@ -80,7 +84,9 @@ const DownloadCenter: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Download Center</h1>
           <p className="text-slate-500">Assignments, Syllabus, and Study Materials</p>
         </div>
-        <Button onClick={() => setModalOpen(true)}><Upload size={18} className="mr-2"/> Upload Content</Button>
+        {canUpload && (
+          <Button onClick={() => setModalOpen(true)}><Upload size={18} className="mr-2"/> Upload Content</Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -96,7 +102,9 @@ const DownloadCenter: React.FC = () => {
                     <Download size={18} />
                   </a>
                 )}
-                <button onClick={() => handleDelete(content.id)} className="p-2 text-slate-400 hover:text-red-600 rounded-full hover:bg-red-50 transition-colors"><Trash2 size={18}/></button>
+                {canUpload && (
+                  <button onClick={() => handleDelete(content.id)} className="p-2 text-slate-400 hover:text-red-600 rounded-full hover:bg-red-50 transition-colors"><Trash2 size={18}/></button>
+                )}
               </div>
             </div>
             <h3 className="font-bold text-lg text-slate-900 mb-1">{content.title}</h3>
@@ -110,6 +118,9 @@ const DownloadCenter: React.FC = () => {
             </div>
           </div>
         ))}
+        {contents.length === 0 && (
+            <div className="col-span-full text-center py-12 text-slate-500">No content available for download.</div>
+        )}
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setModalOpen(false)} title="Upload Content" footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSave}>Upload</Button></>}>

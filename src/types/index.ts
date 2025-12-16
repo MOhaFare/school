@@ -15,6 +15,7 @@ export interface Teacher {
   user_id?: string | null;
   shift?: 'Morning' | 'Afternoon';
   school_id?: string;
+  school_name?: string; // Added for display
 }
 
 export interface Student {
@@ -40,6 +41,7 @@ export interface Student {
   student_role?: string;
   shift?: 'Morning' | 'Afternoon';
   school_id?: string;
+  school_name?: string; // Added for display
   student_house?: string;
   category_id?: string;
 }
@@ -55,6 +57,7 @@ export interface School {
   website?: string;
   subscription_plan: 'basic' | 'pro' | 'enterprise';
   is_active: boolean;
+  features?: string[];
 }
 
 export interface Exam {

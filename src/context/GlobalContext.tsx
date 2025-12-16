@@ -21,8 +21,13 @@ interface GlobalContextType {
   signOut: () => Promise<void>;
   schoolName: string;
   schoolLogo: string | null;
+  schoolAddress: string;
+  schoolPhone: string;
+  schoolEmail: string;
   schoolFee: number;
   academicYear: string;
+  schoolFeatures: string[];
+  isFeatureEnabled: (featureKey: string) => boolean;
   updateSetting: (key: string, value: string | number) => Promise<void>;
   notifications: Notification[];
   unreadCount: number;
@@ -52,8 +57,12 @@ export const GlobalProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   // Settings States
   const [schoolName, setSchoolName] = useState<string>('SchoolMS');
   const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
+  const [schoolAddress, setSchoolAddress] = useState<string>('');
+  const [schoolPhone, setSchoolPhone] = useState<string>('');
+  const [schoolEmail, setSchoolEmail] = useState<string>('');
   const [schoolFee, setSchoolFee] = useState<number>(1200);
   const [academicYear, setAcademicYear] = useState<string>('2024-2025');
+  const [schoolFeatures, setSchoolFeatures] = useState<string[]>([]);
 
   // Multi-System States
   const [language, setLanguage] = useState<Language>('en');
@@ -83,6 +92,12 @@ export const GlobalProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
+
+  const isFeatureEnabled = useCallback((featureKey: string) => {
+    if (profile?.role === 'system_admin') return true;
+    if (schoolFeatures.length === 0) return true; 
+    return schoolFeatures.includes(featureKey);
+  }, [profile, schoolFeatures]);
 
   const signOut = useCallback(async () => {
     try {
@@ -125,8 +140,6 @@ export const GlobalProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         setUser(session?.user ?? null);
       } catch (error: any) {
         console.error("Auth initialization error:", error);
-        
-        // Handle specific session corruption errors
         if (
           error.message?.includes('refresh_token_hmac_key') || 
           error.code === 'unexpected_failure' ||
@@ -152,11 +165,8 @@ export const GlobalProvider: React.FC<{ children: ReactNode }> = ({ children }) 
          signOut();
          return;
       }
-      
       setSession(session);
       setUser(session?.user ?? null);
-      
-      // If signed out, stop loading immediately
       if (event === 'SIGNED_OUT') {
         setLoading(false);
         setProfile(null);
@@ -172,51 +182,52 @@ export const GlobalProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     if (user) {
       const fetchUserData = async (retries = 3) => {
         try {
-          // Fetch profile including school_id
           const [profileResponse, settingsResponse] = await Promise.all([
-            supabase.from('profiles').select('id, name:full_name, role, avatar_url, school_id').eq('id', user.id).single(),
+            supabase.from('profiles').select('id, name:full_name, role, avatar_url, school_id').eq('id', user.id).maybeSingle(),
             supabase.from('settings').select('*')
           ]);
 
           const { data: profileData, error: profileError } = profileResponse;
           
           if (profileError) {
-             // If profile not found (406), it might be a new user or sync issue
-             if (profileError.code === 'PGRST116') {
-                console.warn("Profile not found for user.");
-             } else {
-                // If it's a recursion error, we need to be careful not to loop
-                if (profileError.message?.includes('infinite recursion')) {
-                    console.error("Infinite recursion detected in profile fetch. Check RLS policies.");
-                    setProfile(null);
-                    return;
-                }
-                throw new Error(profileError.message);
+             if (profileError.message?.includes('infinite recursion')) {
+                 console.error("Infinite recursion detected in profile fetch. Check RLS policies.");
+                 setProfile(null);
+                 return;
              }
+             throw new Error(profileError.message);
           }
           
           setProfile(profileData);
+          
+          if (profileData?.school_id) {
+              console.log("Current School ID:", profileData.school_id);
+          }
 
-          // Fetch School Details if attached to a school
+          // Fetch School Details & Features
           if (profileData?.school_id) {
             const { data: schoolData } = await supabase
                 .from('schools')
-                .select('name, logo_url')
+                .select('name, logo_url, address, phone, email, features')
                 .eq('id', profileData.school_id)
                 .single();
             
             if (schoolData) {
                 setSchoolName(schoolData.name);
                 setSchoolLogo(schoolData.logo_url);
+                setSchoolAddress(schoolData.address || '');
+                setSchoolPhone(schoolData.phone || '');
+                setSchoolEmail(schoolData.email || '');
+                if (schoolData.features) {
+                    setSchoolFeatures(schoolData.features);
+                }
             }
           }
 
-          // Fetch Settings
           const { data: settingsData, error: settingsError } = settingsResponse;
           if (settingsError) throw new Error(settingsError.message);
 
           if (settingsData) {
-            // Only override school name from settings if user is NOT linked to a specific school
             if (!profileData?.school_id) {
                 const nameSetting = settingsData.find((s: any) => s.key === 'school_name');
                 if (nameSetting) setSchoolName(nameSetting.value);
@@ -235,14 +246,7 @@ export const GlobalProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
         } catch (error: any) {
           console.error('Error fetching user data:', error);
-          
-          // Retry logic for network errors
-          if (retries > 0 && (
-            error.message?.includes('Failed to fetch') || 
-            error.name === 'TypeError' ||
-            error.status === 500
-          )) {
-            console.warn(`Network error fetching user data. Retrying... (${retries} left)`);
+          if (retries > 0 && (error.message?.includes('Failed to fetch') || error.name === 'TypeError' || error.status === 500)) {
             setTimeout(() => fetchUserData(retries - 1), 1500);
             return;
           }
@@ -253,10 +257,14 @@ export const GlobalProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setProfile(null);
       setSchoolName('SchoolMS');
       setSchoolLogo(null);
+      setSchoolAddress('');
+      setSchoolPhone('');
+      setSchoolEmail('');
       setSchoolFee(1200);
       setAcademicYear('2024-2025');
       setNotifications([]);
       setUnreadCount(0);
+      setSchoolFeatures([]);
     }
   }, [user, fetchNotifications]);
 
@@ -312,9 +320,12 @@ export const GlobalProvider: React.FC<{ children: ReactNode }> = ({ children }) 
   };
 
   const value: GlobalContextType = {
-    session, user, profile, loading, signOut, schoolName, schoolLogo, schoolFee, academicYear, updateSetting,
+    session, user, profile, loading, signOut, 
+    schoolName, schoolLogo, schoolAddress, schoolPhone, schoolEmail, schoolFee, 
+    academicYear, updateSetting,
     notifications, unreadCount, fetchNotifications, markNotificationAsRead, markAllNotificationsAsRead, createNotification,
-    language, setLanguage, theme, toggleTheme, t, selectedSession, setSelectedSession
+    language, setLanguage, theme, toggleTheme, t, selectedSession, setSelectedSession,
+    schoolFeatures, isFeatureEnabled
   };
 
   return (

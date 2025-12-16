@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Plus, Mail, Phone, Calendar, Eye, Edit, Trash2, Filter, Sun, Moon, Key } from 'lucide-react';
+import { Search, Plus, Mail, Phone, Calendar, Eye, Edit, Trash2, Filter, Sun, Moon, Key, Building2, Link as LinkIcon } from 'lucide-react';
 import { Teacher } from '../types';
 import Modal from '../components/ui/Modal';
 import TeacherForm from '../components/teachers/TeacherForm';
@@ -10,6 +10,7 @@ import toast from 'react-hot-toast';
 import { supabase } from '../lib/supabaseClient';
 import Badge from '../components/ui/Badge';
 import { formatCurrency } from '../utils/format';
+import { useGlobal } from '../context/GlobalContext';
 
 const transformTeacherToCamelCase = (dbTeacher: any): Teacher => ({
   id: dbTeacher.id,
@@ -27,10 +28,12 @@ const transformTeacherToCamelCase = (dbTeacher: any): Teacher => ({
   avatar: dbTeacher.avatar,
   user_id: dbTeacher.user_id,
   shift: dbTeacher.shift,
-  school_id: dbTeacher.school_id, // Ensure school_id is mapped
+  school_id: dbTeacher.school_id,
+  school_name: dbTeacher.schools?.name, 
 });
 
 const Teachers: React.FC = () => {
+  const { profile } = useGlobal();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,9 +48,22 @@ const Teachers: React.FC = () => {
   const formRef = useRef<HTMLFormElement>(null);
 
   const fetchTeachers = async () => {
+    if (!profile) return;
+
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('teachers').select('*').order('created_at', { ascending: false });
+      let query = supabase
+        .from('teachers')
+        .select('*, schools(name)')
+        .order('created_at', { ascending: false });
+      
+      // STRICT FILTERING: Only fetch teachers for my school unless I am a System Admin
+      if (profile.role !== 'system_admin' && profile.school_id) {
+        query = query.eq('school_id', profile.school_id);
+      }
+
+      const { data, error } = await query;
+        
       if (error) throw new Error(error.message);
       setTeachers(data.map(transformTeacherToCamelCase));
     } catch (error: any) {
@@ -60,12 +76,13 @@ const Teachers: React.FC = () => {
 
   useEffect(() => {
     fetchTeachers();
-  }, []);
+  }, [profile]);
 
   const filteredTeachers = teachers.filter(teacher =>
     teacher.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     teacher.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    teacher.email.toLowerCase().includes(searchTerm.toLowerCase())
+    teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (teacher.school_name && teacher.school_name.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   const handleAdd = () => {
@@ -115,6 +132,15 @@ const Teachers: React.FC = () => {
   }) => {
     setIsSubmitting(true);
     try {
+      // CRITICAL FIX: Ensure school_id is correctly set from profile if not system admin
+      const effectiveSchoolId = profile?.role === 'system_admin' 
+        ? formData.school_id 
+        : profile?.school_id;
+
+      if (!effectiveSchoolId) {
+        throw new Error("School ID is missing. Please refresh the page and try again.");
+      }
+
       const joinDate = formData.joinDate;
       const issuedDate = joinDate;
       const expiryDate = new Date(joinDate);
@@ -133,7 +159,7 @@ const Teachers: React.FC = () => {
         status: formData.status,
         user_id: formData.user_id,
         shift: formData.shift,
-        school_id: formData.school_id,
+        school_id: effectiveSchoolId, // Use the verified school ID
         avatar: selectedTeacher?.avatar,
       };
       
@@ -145,13 +171,13 @@ const Teachers: React.FC = () => {
       }
 
       if (formData.id) {
-        const { data, error } = await supabase.from('teachers').update(teacherToSave).eq('id', formData.id).select().single();
+        const { data, error } = await supabase.from('teachers').update(teacherToSave).eq('id', formData.id).select('*, schools(name)').single();
         if (error) throw new Error(error.message);
         const updatedTeacher = transformTeacherToCamelCase(data);
         setTeachers(prev => prev.map(t => t.id === formData.id ? updatedTeacher : t));
         toast.success('Teacher updated successfully!');
       } else {
-        const { data, error } = await supabase.from('teachers').insert(teacherToSave).select().single();
+        const { data, error } = await supabase.from('teachers').insert(teacherToSave).select('*, schools(name)').single();
         if (error) throw new Error(error.message);
         const newTeacher = transformTeacherToCamelCase(data);
         setTeachers(prev => [newTeacher, ...prev]);
@@ -185,6 +211,8 @@ const Teachers: React.FC = () => {
       }
     }
   };
+
+  const isSystemAdmin = profile?.role === 'system_admin';
 
   if (loading) {
     return <CardGridSkeleton title="Teachers" />;
@@ -242,6 +270,12 @@ const Teachers: React.FC = () => {
             </div>
 
             <div className="space-y-3 flex-grow">
+              {isSystemAdmin && teacher.school_name && (
+                <div className="flex items-center text-xs text-blue-600 bg-blue-50 p-1.5 rounded-md">
+                    <Building2 size={12} className="mr-1.5" />
+                    {teacher.school_name}
+                </div>
+              )}
               <div className="flex items-center justify-between text-sm p-2 bg-slate-50 rounded-lg">
                 <div>
                     <span className="text-slate-500 font-medium mr-2">Subject:</span>
@@ -268,8 +302,10 @@ const Teachers: React.FC = () => {
                 <p className="text-sm font-bold text-slate-900">{formatCurrency(teacher.salary)}</p>
               </div>
               <div className="flex gap-1">
-                {!teacher.user_id && (
+                {!teacher.user_id ? (
                   <button onClick={() => handleCreateUser(teacher)} className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors" title="Create Login"><Key size={16}/></button>
+                ) : (
+                  <div className="p-2 text-green-500" title="Account Linked"><LinkIcon size={16}/></div>
                 )}
                 <button onClick={() => handleView(teacher)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"><Eye size={16}/></button>
                 <button onClick={() => handleEdit(teacher)} className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors"><Edit size={16}/></button>
@@ -312,7 +348,7 @@ const Teachers: React.FC = () => {
             name={selectedTeacher.name} 
             email={selectedTeacher.email} 
             role="teacher" 
-            schoolId={selectedTeacher.school_id} // Pass the teacher's school ID
+            schoolId={selectedTeacher.school_id}
             onClose={() => setCreateUserModalOpen(false)}
             onSuccess={fetchTeachers}
           />
@@ -331,6 +367,9 @@ const Teachers: React.FC = () => {
              </div>
              <h3 className="text-xl font-bold text-slate-900">{selectedTeacher.name}</h3>
              <p className="text-slate-500 font-medium">{selectedTeacher.subject} Department</p>
+             {selectedTeacher.school_name && (
+                 <p className="text-sm text-blue-600 mt-1 font-medium">{selectedTeacher.school_name}</p>
+             )}
              <div className="mt-2">
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border bg-slate-50 text-slate-600 border-slate-200">
                   {selectedTeacher.shift === 'Afternoon' ? <Moon size={12} className="mr-1"/> : <Sun size={12} className="mr-1"/>}

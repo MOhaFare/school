@@ -7,8 +7,10 @@ import AttendanceForm from '../components/attendance/AttendanceForm';
 import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useGlobal } from '../context/GlobalContext';
 
 const Attendance: React.FC = () => {
+  const { profile } = useGlobal();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
@@ -20,6 +22,8 @@ const Attendance: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formRef = useRef<HTMLFormElement>(null);
+
+  const canEdit = ['system_admin', 'admin', 'principal', 'teacher'].includes(profile?.role || '');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -43,9 +47,7 @@ const Attendance: React.FC = () => {
         setStudents(studentsData || []);
         setClasses(classesData.map((c: any) => ({...c, name: `Class ${c.name}`})) || []);
       } catch (error: any) {
-        const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-        toast.error(`Failed to load data: ${errorMessage}`);
-        console.error("Error fetching attendance data:", error);
+        toast.error(`Failed to load data: ${error.message}`);
       } finally {
         setLoading(false);
       }
@@ -151,10 +153,12 @@ const Attendance: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Attendance</h1>
           <p className="text-gray-600 mt-1">Track student daily attendance</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus size={20} className="mr-2" />
-          Mark Attendance
-        </Button>
+        {canEdit && (
+          <Button onClick={handleAdd}>
+            <Plus size={20} className="mr-2" />
+            Mark Attendance
+          </Button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row gap-4">
@@ -208,8 +212,12 @@ const Attendance: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                     <Button variant="ghost" size="icon" onClick={() => handleEdit(record)}><Edit className="h-4 w-4" /></Button>
-                     <Button variant="ghost" size="icon" onClick={() => handleDelete(record)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                     {canEdit && (
+                       <>
+                         <Button variant="ghost" size="icon" onClick={() => handleEdit(record)}><Edit className="h-4 w-4" /></Button>
+                         <Button variant="ghost" size="icon" onClick={() => handleDelete(record)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                       </>
+                     )}
                   </td>
                 </tr>
               ))}

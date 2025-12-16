@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { SchoolClass, Teacher, Course } from '../types';
 import { useLocation } from 'react-router-dom';
+import { useGlobal } from '../context/GlobalContext';
 
 interface TimetableEntry {
   id: string;
@@ -18,7 +19,6 @@ interface TimetableEntry {
   subject_name: string;
   teacher_name: string;
   class_name?: string;
-  // Raw IDs for editing
   subject_id?: string;
   teacher_id?: string;
   class_id?: string;
@@ -27,6 +27,7 @@ interface TimetableEntry {
 const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const Timetable: React.FC = () => {
+  const { profile } = useGlobal();
   const location = useLocation();
   const [viewMode, setViewMode] = useState<'class' | 'teacher'>('class');
   const [selectedId, setSelectedId] = useState<string>('');
@@ -37,7 +38,6 @@ const Timetable: React.FC = () => {
   const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
   const [loading, setLoading] = useState(false);
   
-  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TimetableEntry | null>(null);
   const [formData, setFormData] = useState({
@@ -49,8 +49,9 @@ const Timetable: React.FC = () => {
     end_time: '10:00'
   });
 
+  const canManage = ['system_admin', 'admin', 'principal'].includes(profile?.role || '');
+
   useEffect(() => {
-    // Check if we are on the teachers-timetable route
     if (location.pathname === '/teachers-timetable') {
       setViewMode('teacher');
     } else {
@@ -68,7 +69,6 @@ const Timetable: React.FC = () => {
       if (teachersData) setTeachers(teachersData as any);
       if (coursesData) setCourses(coursesData as any);
       
-      // Set initial selection based on view mode
       if (viewMode === 'class' && classesData && classesData.length > 0) {
         setSelectedId(classesData[0].id);
       } else if (viewMode === 'teacher' && teachersData && teachersData.length > 0) {
@@ -76,7 +76,7 @@ const Timetable: React.FC = () => {
       }
     };
     fetchInitialData();
-  }, [viewMode]); // Re-run when viewMode changes to set correct initial ID
+  }, [viewMode]);
 
   useEffect(() => {
     if (selectedId) {
@@ -151,7 +151,6 @@ const Timetable: React.FC = () => {
   const handleSave = async () => {
     const payload = {
       ...formData,
-      // Ensure IDs are set if not modified in form
       class_id: formData.class_id || (viewMode === 'class' ? selectedId : ''),
       teacher_id: formData.teacher_id || (viewMode === 'teacher' ? selectedId : ''),
     };
@@ -220,9 +219,11 @@ const Timetable: React.FC = () => {
             }
           </Select>
           
-          <Button onClick={() => handleOpenModal()}>
-            <Plus size={20} className="mr-2" /> Add Schedule
-          </Button>
+          {canManage && (
+            <Button onClick={() => handleOpenModal()}>
+              <Plus size={20} className="mr-2" /> Add Schedule
+            </Button>
+          )}
         </div>
       </div>
 
@@ -251,10 +252,12 @@ const Timetable: React.FC = () => {
                       </div>
                   )}
 
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded-md p-0.5 shadow-sm">
-                    <button onClick={() => handleOpenModal(entry)} className="text-slate-500 hover:text-blue-600 p-0.5"><Edit size={12} /></button>
-                    <button onClick={() => handleDelete(entry.id)} className="text-slate-500 hover:text-red-600 p-0.5"><Trash2 size={12} /></button>
-                  </div>
+                  {canManage && (
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 rounded-md p-0.5 shadow-sm">
+                      <button onClick={() => handleOpenModal(entry)} className="text-slate-500 hover:text-blue-600 p-0.5"><Edit size={12} /></button>
+                      <button onClick={() => handleDelete(entry.id)} className="text-slate-500 hover:text-red-600 p-0.5"><Trash2 size={12} /></button>
+                    </div>
+                  )}
                 </div>
               ))}
               {timetable.filter(t => t.day_of_week === day).length === 0 && (

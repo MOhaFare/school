@@ -1,15 +1,18 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { Search, Download, DollarSign, Plus, Edit, Trash2, Filter } from 'lucide-react';
+import { Search, Download, DollarSign, Plus, Edit, Trash2, Filter, Printer } from 'lucide-react';
 import { type Payroll as PayrollType, Teacher } from '../types';
 import Modal from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
 import PayrollForm from '../components/payroll/PayrollForm';
+import Payslip from '../components/payroll/Payslip';
 import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import Badge from '../components/ui/Badge';
 import { formatCurrency } from '../utils/format';
 import EmptyState from '../components/ui/EmptyState';
+import { useGlobal } from '../context/GlobalContext';
+import { useReactToPrint } from 'react-to-print';
 
 const transformPayrollToCamelCase = (dbPayroll: any): PayrollType => ({
   id: dbPayroll.id,
@@ -27,17 +30,26 @@ const transformPayrollToCamelCase = (dbPayroll: any): PayrollType => ({
 });
 
 const Payroll: React.FC = () => {
+  const { schoolName, schoolAddress, schoolLogo } = useGlobal();
   const [payrolls, setPayrolls] = useState<PayrollType[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  
   const [isModalOpen, setModalOpen] = useState(false);
+  const [isPayslipModalOpen, setPayslipModalOpen] = useState(false);
   const [selectedPayroll, setSelectedPayroll] = useState<PayrollType | null>(null);
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formRef = useRef<HTMLFormElement>(null);
+  const payslipRef = useRef<HTMLDivElement>(null);
+
+  const handlePrintPayslip = useReactToPrint({
+    content: () => payslipRef.current,
+    documentTitle: `Payslip-${selectedPayroll?.id}`,
+  });
 
   useEffect(() => {
     const fetchData = async () => {
@@ -48,14 +60,17 @@ const Payroll: React.FC = () => {
           { data: teachersData, error: teachersError }
         ] = await Promise.all([
           supabase.from('payrolls').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
-          supabase.from('teachers').select('id, name, salary')
+          supabase.from('teachers').select('id, name, salary, subject, join_date')
         ]);
 
         if (payrollsError) throw payrollsError;
         if (teachersError) throw teachersError;
 
         setPayrolls((payrollsData || []).map(transformPayrollToCamelCase));
-        setTeachers(teachersData || []);
+        setTeachers(teachersData.map((t: any) => ({
+            ...t,
+            joinDate: t.join_date // Map join_date to joinDate for local use
+        })) || []);
       } catch (error: any) {
         const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
         toast.error(`Failed to load data: ${errorMessage}`);
@@ -91,6 +106,11 @@ const Payroll: React.FC = () => {
   const handleEdit = (payroll: PayrollType) => {
     setSelectedPayroll(payroll);
     setModalOpen(true);
+  };
+
+  const handleViewPayslip = (payroll: PayrollType) => {
+    setSelectedPayroll(payroll);
+    setPayslipModalOpen(true);
   };
 
   const handleDelete = (payroll: PayrollType) => {
@@ -272,6 +292,7 @@ const Payroll: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                      <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" onClick={() => handleViewPayslip(payroll)} title="Print Payslip"><Printer className="h-4 w-4 text-slate-500 hover:text-blue-600" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => handleEdit(payroll)} title="Edit"><Edit className="h-4 w-4 text-slate-500 hover:text-amber-600" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => handleDelete(payroll)} title="Delete"><Trash2 className="h-4 w-4 text-slate-500 hover:text-rose-600" /></Button>
                      </div>
@@ -295,6 +316,36 @@ const Payroll: React.FC = () => {
 
       <Modal isOpen={isModalOpen} onClose={() => setModalOpen(false)} title={selectedPayroll ? 'Edit Payroll' : 'Generate Payroll'} footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={() => formRef.current?.requestSubmit()} loading={isSubmitting}>{selectedPayroll ? 'Save Changes' : 'Generate'}</Button></>}>
         <PayrollForm ref={formRef} payroll={selectedPayroll} teachers={teachers} onSubmit={handleSavePayroll} />
+      </Modal>
+
+      {/* Payslip Modal */}
+      <Modal 
+        isOpen={isPayslipModalOpen} 
+        onClose={() => setPayslipModalOpen(false)} 
+        title="Payslip"
+        footer={
+            <Button onClick={handlePrintPayslip}>
+                <Printer size={18} className="mr-2" /> Print Payslip
+            </Button>
+        }
+      >
+        <div className="bg-gray-100 p-4 rounded overflow-auto max-h-[60vh]">
+            {selectedPayroll && (
+                <div className="scale-90 origin-top">
+                    <Payslip 
+                        ref={payslipRef}
+                        payroll={{
+                            ...selectedPayroll,
+                            teacherRole: teachers.find(t => t.id === selectedPayroll.teacherId)?.subject + ' Teacher',
+                            joinDate: teachers.find(t => t.id === selectedPayroll.teacherId)?.joinDate
+                        }}
+                        schoolName={schoolName}
+                        schoolAddress={schoolAddress}
+                        schoolLogo={schoolLogo}
+                    />
+                </div>
+            )}
+        </div>
       </Modal>
 
       <Modal isOpen={isDeleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Delete Payroll Record" footer={<><Button variant="secondary" onClick={() => setDeleteModalOpen(false)}>Cancel</Button><Button variant="danger" onClick={handleConfirmDelete} loading={isSubmitting}>Delete Record</Button></>}>

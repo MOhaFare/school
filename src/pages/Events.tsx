@@ -17,9 +17,10 @@ const Events: React.FC = () => {
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { createNotification } = useGlobal();
+  const { createNotification, profile } = useGlobal();
 
   const formRef = useRef<HTMLFormElement>(null);
+  const canManage = ['system_admin', 'admin', 'principal', 'teacher'].includes(profile?.role || '');
 
   useEffect(() => {
     const fetchEvents = async () => {
@@ -29,9 +30,7 @@ const Events: React.FC = () => {
         if (error) throw error;
         setEvents(data);
       } catch (error: any) {
-        const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-        toast.error(`Failed to fetch events: ${errorMessage}`);
-        console.error("Error fetching events:", error);
+        toast.error(`Failed to fetch events: ${error.message}`);
       } finally {
         setLoading(false);
       }
@@ -136,10 +135,12 @@ const Events: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Events</h1>
           <p className="text-gray-600 mt-1">Manage school events and activities</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus size={20} className="mr-2" />
-          Create Event
-        </Button>
+        {canManage && (
+          <Button onClick={handleAdd}>
+            <Plus size={20} className="mr-2" />
+            Create Event
+          </Button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -173,10 +174,12 @@ const Events: React.FC = () => {
 
             <p className="text-sm text-gray-500 flex-grow mb-4">{event.description.substring(0, 100)}...</p>
 
-            <div className="pt-4 border-t border-gray-100 mt-auto flex items-center justify-end">
-              <Button variant="ghost" size="icon" onClick={() => handleEdit(event)}><Edit className="h-4 w-4" /></Button>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(event)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-            </div>
+            {canManage && (
+              <div className="pt-4 border-t border-gray-100 mt-auto flex items-center justify-end">
+                <Button variant="ghost" size="icon" onClick={() => handleEdit(event)}><Edit className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" onClick={() => handleDelete(event)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+              </div>
+            )}
           </div>
         ))}
       </div>

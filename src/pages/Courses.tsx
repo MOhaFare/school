@@ -7,6 +7,7 @@ import CourseForm from '../components/courses/CourseForm';
 import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useGlobal } from '../context/GlobalContext';
 
 const transformCourseToCamelCase = (dbCourse: any): Course => ({
   id: dbCourse.id,
@@ -21,6 +22,7 @@ const transformCourseToCamelCase = (dbCourse: any): Course => ({
 });
 
 const Courses: React.FC = () => {
+  const { profile } = useGlobal();
   const [courses, setCourses] = useState<Course[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -32,6 +34,7 @@ const Courses: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formRef = useRef<HTMLFormElement>(null);
+  const canManage = ['system_admin', 'admin', 'principal'].includes(profile?.role || '');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -55,9 +58,7 @@ const Courses: React.FC = () => {
         setTeachers(teachersData || []);
         setDepartments(departmentsData || []);
       } catch (error: any) {
-        const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-        toast.error(`Failed to load data: ${errorMessage}`);
-        console.error("Error fetching courses data:", error);
+        toast.error(`Failed to load data: ${error.message}`);
       } finally {
         setLoading(false);
       }
@@ -158,10 +159,12 @@ const Courses: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Courses</h1>
           <p className="text-gray-600 mt-1">Manage academic courses and curriculum</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus size={20} className="mr-2" />
-          Add Course
-        </Button>
+        {canManage && (
+          <Button onClick={handleAdd}>
+            <Plus size={20} className="mr-2" />
+            Add Course
+          </Button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -186,7 +189,7 @@ const Courses: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Teacher</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden lg:table-cell">Department</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Credits</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                {canManage && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>}
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -221,10 +224,12 @@ const Courses: React.FC = () => {
                       <span className="text-sm font-medium text-gray-900">{course.credits}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                     <Button variant="ghost" size="icon" onClick={() => handleEdit(course)}><Edit className="h-4 w-4" /></Button>
-                     <Button variant="ghost" size="icon" onClick={() => handleDelete(course)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-                  </td>
+                  {canManage && (
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                       <Button variant="ghost" size="icon" onClick={() => handleEdit(course)}><Edit className="h-4 w-4" /></Button>
+                       <Button variant="ghost" size="icon" onClick={() => handleDelete(course)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

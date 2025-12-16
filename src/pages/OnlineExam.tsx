@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Monitor, Plus, Edit, Trash2, Calendar, Clock, CheckCircle } from 'lucide-react';
+import { Monitor, Plus, Edit, Trash2, Calendar, Clock, CheckCircle, ListChecks, Play, Eye } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Label } from '../components/ui/Label';
@@ -10,6 +10,9 @@ import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { formatDate } from '../utils/format';
 import Badge from '../components/ui/Badge';
+import QuestionManager from '../components/exams/QuestionManager';
+import TakeExamModal from '../components/exams/TakeExamModal';
+import { useGlobal } from '../context/GlobalContext';
 
 interface OnlineExamItem {
   id: string;
@@ -21,35 +24,88 @@ interface OnlineExamItem {
   end_date: string;
   duration_minutes: number;
   status: 'draft' | 'published' | 'closed';
+  has_taken?: boolean;
+  score?: number;
+  total_marks?: number;
 }
 
 const OnlineExam: React.FC = () => {
+  const { profile, user } = useGlobal();
   const [exams, setExams] = useState<OnlineExamItem[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isQuestionsModalOpen, setIsQuestionsModalOpen] = useState(false);
+  const [isTakeExamModalOpen, setIsTakeExamModalOpen] = useState(false);
+  
   const [selectedExam, setSelectedExam] = useState<OnlineExamItem | null>(null);
+  const [studentId, setStudentId] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     title: '',
     class: '9',
     section: 'A',
     subject: 'Mathematics',
-    start_date: new Date().toISOString().slice(0, 16), // datetime-local format
-    end_date: new Date().toISOString().slice(0, 16),
+    start_date: new Date().toISOString().slice(0, 16),
+    end_date: new Date(Date.now() + 86400000).toISOString().slice(0, 16),
     duration_minutes: 60,
     status: 'draft' as const
   });
 
   useEffect(() => {
     fetchExams();
-  }, []);
+  }, [profile]);
 
   const fetchExams = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('online_exams').select('*').order('start_date', { ascending: false });
-    if (error) toast.error('Failed to load online exams');
-    else setExams(data || []);
-    setLoading(false);
+    try {
+      let query = supabase.from('online_exams').select('*').order('start_date', { ascending: false });
+      
+      // If student, verify profile link
+      let currentStudentId: string | null = null;
+      if (profile?.role === 'student' && user) {
+         const { data: studentData } = await supabase.from('students').select('id, class, section').eq('user_id', user.id).single();
+         if (studentData) {
+             currentStudentId = studentData.id;
+             setStudentId(studentData.id);
+             // Filter exams for student's class
+             query = query.eq('class', studentData.class).eq('status', 'published');
+         }
+      }
+
+      const { data: examsData, error } = await query;
+      if (error) throw error;
+
+      let processedExams = examsData || [];
+
+      // If student, check which exams they have taken
+      if (currentStudentId && processedExams.length > 0) {
+          const { data: results } = await supabase
+            .from('online_exam_results')
+            .select('exam_id, score, total_marks')
+            .eq('student_id', currentStudentId);
+          
+          const resultMap = new Map();
+          results?.forEach((r: any) => resultMap.set(r.exam_id, r));
+
+          processedExams = processedExams.map((exam: any) => {
+              const result = resultMap.get(exam.id);
+              return {
+                  ...exam,
+                  has_taken: !!result,
+                  score: result?.score,
+                  total_marks: result?.total_marks
+              };
+          });
+      }
+
+      setExams(processedExams);
+    } catch (error: any) {
+      toast.error('Failed to load online exams');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleOpenModal = (exam?: OnlineExamItem) => {
@@ -80,6 +136,29 @@ const OnlineExam: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const handleManageQuestions = (exam: OnlineExamItem) => {
+    setSelectedExam(exam);
+    setIsQuestionsModalOpen(true);
+  };
+
+  const handleTakeExam = (exam: OnlineExamItem) => {
+    const now = new Date();
+    const start = new Date(exam.start_date);
+    const end = new Date(exam.end_date);
+
+    if (now < start) {
+        toast.error(`Exam starts on ${formatDate(exam.start_date)}`);
+        return;
+    }
+    if (now > end) {
+        toast.error('Exam has expired');
+        return;
+    }
+
+    setSelectedExam(exam);
+    setIsTakeExamModalOpen(true);
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -108,6 +187,9 @@ const OnlineExam: React.FC = () => {
     }
   };
 
+  const canEdit = profile?.role === 'admin' || profile?.role === 'teacher' || profile?.role === 'system_admin';
+  const isStudent = profile?.role === 'student';
+
   if (loading) return <TableSkeleton title="Online Examinations" headers={['Exam Title', 'Class', 'Subject', 'Date Range', 'Status', 'Actions']} />;
 
   return (
@@ -117,7 +199,7 @@ const OnlineExam: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Online Examinations</h1>
           <p className="text-slate-500">Manage computer-based tests and quizzes</p>
         </div>
-        <Button onClick={() => handleOpenModal()}><Plus size={20} className="mr-2"/> Create Exam</Button>
+        {canEdit && <Button onClick={() => handleOpenModal()}><Plus size={20} className="mr-2"/> Create Exam</Button>}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -145,52 +227,127 @@ const OnlineExam: React.FC = () => {
                     </div>
                 </td>
                 <td className="px-6 py-4">
-                  <Badge variant={exam.status === 'published' ? 'success' : exam.status === 'closed' ? 'danger' : 'neutral'} className="capitalize">
-                    {exam.status}
-                  </Badge>
+                  {isStudent && exam.has_taken ? (
+                      <Badge variant="success">Completed ({exam.score}/{exam.total_marks})</Badge>
+                  ) : (
+                      <Badge variant={exam.status === 'published' ? 'success' : exam.status === 'closed' ? 'danger' : 'neutral'} className="capitalize">
+                        {exam.status}
+                      </Badge>
+                  )}
                 </td>
                 <td className="px-6 py-4 text-right flex justify-end gap-2">
-                  <button onClick={() => handleOpenModal(exam)} className="text-slate-500 hover:text-blue-600 p-1 rounded"><Edit size={16}/></button>
-                  <button onClick={() => handleDelete(exam.id)} className="text-slate-500 hover:text-red-600 p-1 rounded"><Trash2 size={16}/></button>
+                  {canEdit ? (
+                    <>
+                      <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        className="text-xs"
+                        onClick={() => handleManageQuestions(exam)}
+                      >
+                        <ListChecks size={14} className="mr-1"/> Questions
+                      </Button>
+                      <button onClick={() => handleOpenModal(exam)} className="text-slate-500 hover:text-blue-600 p-1 rounded"><Edit size={16}/></button>
+                      <button onClick={() => handleDelete(exam.id)} className="text-slate-500 hover:text-red-600 p-1 rounded"><Trash2 size={16}/></button>
+                    </>
+                  ) : isStudent ? (
+                    exam.has_taken ? (
+                        <Button variant="secondary" size="sm" className="text-xs" disabled>
+                            <Eye size={14} className="mr-1"/> View Result
+                        </Button>
+                    ) : (
+                        <Button 
+                            size="sm" 
+                            className="bg-green-600 hover:bg-green-700 text-xs"
+                            onClick={() => handleTakeExam(exam)}
+                        >
+                            <Play size={14} className="mr-1"/> Start Exam
+                        </Button>
+                    )
+                  ) : null}
                 </td>
               </tr>
             ))}
-            {exams.length === 0 && <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">No online exams created.</td></tr>}
+            {exams.length === 0 && <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">No online exams found.</td></tr>}
           </tbody>
         </table>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={selectedExam ? 'Edit Exam' : 'Create Online Exam'} footer={<><Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave}>Save</Button></>}>
-        <form onSubmit={handleSave} className="space-y-4">
-          <div className="space-y-2">
-            <Label>Exam Title</Label>
-            <Input value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-             <div className="space-y-2"><Label>Class</Label><Input value={formData.class} onChange={e => setFormData({...formData, class: e.target.value})} /></div>
-             <div className="space-y-2"><Label>Section</Label><Input value={formData.section} onChange={e => setFormData({...formData, section: e.target.value})} /></div>
-          </div>
-          <div className="space-y-2">
-            <Label>Subject</Label>
-            <Input value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Start Date & Time</Label><Input type="datetime-local" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} /></div>
-            <div className="space-y-2"><Label>End Date & Time</Label><Input type="datetime-local" value={formData.end_date} onChange={e => setFormData({...formData, end_date: e.target.value})} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2"><Label>Duration (Minutes)</Label><Input type="number" value={formData.duration_minutes} onChange={e => setFormData({...formData, duration_minutes: parseInt(e.target.value)})} /></div>
+      {/* Edit/Create Modal (Admin Only) */}
+      {canEdit && (
+        <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={selectedExam ? 'Edit Exam' : 'Create Online Exam'} footer={<><Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave}>Save</Button></>}>
+            <form onSubmit={handleSave} className="space-y-4">
             <div className="space-y-2">
-                <Label>Status</Label>
-                <Select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})}>
-                    <option value="draft">Draft</option>
-                    <option value="published">Published</option>
-                    <option value="closed">Closed</option>
-                </Select>
+                <Label>Exam Title</Label>
+                <Input value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required />
             </div>
-          </div>
-        </form>
-      </Modal>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2"><Label>Class</Label><Input value={formData.class} onChange={e => setFormData({...formData, class: e.target.value})} /></div>
+                <div className="space-y-2"><Label>Section</Label><Input value={formData.section} onChange={e => setFormData({...formData, section: e.target.value})} /></div>
+            </div>
+            <div className="space-y-2">
+                <Label>Subject</Label>
+                <Input value={formData.subject} onChange={e => setFormData({...formData, subject: e.target.value})} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2"><Label>Start Date & Time</Label><Input type="datetime-local" value={formData.start_date} onChange={e => setFormData({...formData, start_date: e.target.value})} /></div>
+                <div className="space-y-2"><Label>End Date & Time</Label><Input type="datetime-local" value={formData.end_date} onChange={e => setFormData({...formData, end_date: e.target.value})} /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2"><Label>Duration (Minutes)</Label><Input type="number" value={formData.duration_minutes} onChange={e => setFormData({...formData, duration_minutes: parseInt(e.target.value)})} /></div>
+                <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as any})}>
+                        <option value="draft">Draft</option>
+                        <option value="published">Published</option>
+                        <option value="closed">Closed</option>
+                    </Select>
+                </div>
+            </div>
+            </form>
+        </Modal>
+      )}
+
+      {/* Question Manager Modal (Admin Only) */}
+      {canEdit && (
+        <Modal
+            isOpen={isQuestionsModalOpen}
+            onClose={() => setIsQuestionsModalOpen(false)}
+            title="Question Bank"
+            size="4xl"
+        >
+            {selectedExam && (
+                <QuestionManager 
+                    examId={selectedExam.id} 
+                    examTitle={selectedExam.title}
+                    onClose={() => setIsQuestionsModalOpen(false)} 
+                />
+            )}
+        </Modal>
+      )}
+
+      {/* Take Exam Modal (Student Only) */}
+      {isStudent && (
+          <Modal
+            isOpen={isTakeExamModalOpen}
+            onClose={() => setIsTakeExamModalOpen(false)}
+            title={`Exam: ${selectedExam?.title}`}
+            size="full"
+          >
+            {selectedExam && studentId && (
+                <TakeExamModal 
+                    examId={selectedExam.id}
+                    examTitle={selectedExam.title}
+                    durationMinutes={selectedExam.duration_minutes}
+                    studentId={studentId}
+                    onClose={() => setIsTakeExamModalOpen(false)}
+                    onSuccess={() => {
+                        setIsTakeExamModalOpen(false);
+                        fetchExams();
+                    }}
+                />
+            )}
+          </Modal>
+      )}
     </div>
   );
 };

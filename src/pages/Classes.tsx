@@ -8,6 +8,7 @@ import ClassForm from '../components/classes/ClassForm';
 import CardGridSkeleton from '../components/ui/CardGridSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useGlobal } from '../context/GlobalContext';
 
 const calculateGpa = (marks: number, totalMarks: number): number => {
     if (totalMarks === 0) return 0;
@@ -22,6 +23,7 @@ const calculateGpa = (marks: number, totalMarks: number): number => {
 };
 
 const Classes: React.FC = () => {
+  const { profile } = useGlobal();
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +34,7 @@ const Classes: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formRef = useRef<HTMLFormElement>(null);
+  const canManage = ['system_admin', 'admin', 'principal'].includes(profile?.role || '');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -82,9 +85,7 @@ const Classes: React.FC = () => {
         setClasses(transformedClasses);
 
       } catch (error: any) {
-        const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-        toast.error(`Failed to fetch class data: ${errorMessage}`);
-        console.error("Error fetching class data:", error);
+        toast.error(`Failed to fetch class data: ${error.message}`);
       } finally {
         setLoading(false);
       }
@@ -128,7 +129,6 @@ const Classes: React.FC = () => {
           
           setClasses(prev => prev.map(c => {
             if (c.id === formData.id) {
-              // Preserve calculated fields (studentCount, averageGpa, subjects) from the existing object
               const teacher = teachers.find(t => t.id === data.teacher_id);
               return {
                 ...c,
@@ -197,10 +197,12 @@ const Classes: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Classes</h1>
           <p className="text-gray-600 mt-1">Manage classes, teachers, and student performance</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus size={20} className="mr-2" />
-          Add New Class
-        </Button>
+        {canManage && (
+          <Button onClick={handleAdd}>
+            <Plus size={20} className="mr-2" />
+            Add New Class
+          </Button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
@@ -256,19 +258,15 @@ const Classes: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-gray-100 mt-auto flex items-center justify-end">
-              <Button variant="ghost" size="icon" onClick={() => handleEdit(cls)}><Edit className="h-4 w-4" /></Button>
-              <Button variant="ghost" size="icon" onClick={() => handleDelete(cls)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-            </div>
+            {canManage && (
+              <div className="pt-4 border-t border-gray-100 mt-auto flex items-center justify-end">
+                <Button variant="ghost" size="icon" onClick={() => handleEdit(cls)}><Edit className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" onClick={() => handleDelete(cls)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
+              </div>
+            )}
           </div>
         ))}
       </div>
-
-      {filteredClasses.length === 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-          <p className="text-gray-500">No classes found matching your search.</p>
-        </div>
-      )}
 
       <Modal
         isOpen={isModalOpen}

@@ -1,11 +1,11 @@
 import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ff7c7c', '#60a5fa'];
+
 interface ClassDistributionChartProps {
   data: { name: string; value: number }[];
 }
-
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658'];
 
 const ClassDistributionChart: React.FC<ClassDistributionChartProps> = ({ data }) => {
   return (
@@ -18,17 +18,20 @@ const ClassDistributionChart: React.FC<ClassDistributionChartProps> = ({ data })
               data={data}
               cx="50%"
               cy="50%"
-              labelLine={false}
-              outerRadius={100}
+              innerRadius={60}
+              outerRadius={80}
               fill="#8884d8"
+              paddingAngle={5}
               dataKey="value"
-              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
             >
               {data.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
-            <Tooltip />
+            <Tooltip 
+                contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                itemStyle={{ color: '#1e293b' }}
+            />
             <Legend />
           </PieChart>
         </ResponsiveContainer>
