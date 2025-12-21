@@ -11,7 +11,7 @@ import { useGlobal } from '../context/GlobalContext';
 const ComposeMessage: React.FC = () => {
   const { profile, createNotification } = useGlobal();
   const [recipientType, setRecipientType] = useState<'individual' | 'group'>('individual');
-  const [recipientGroup, setRecipientGroup] = useState('students');
+  const [recipientGroup, setRecipientGroup] = useState('student');
   const [recipientEmail, setRecipientEmail] = useState('');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
@@ -19,33 +19,42 @@ const ComposeMessage: React.FC = () => {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!profile?.school_id) return;
+
     setLoading(true);
 
     try {
-      // In a real app, this would trigger a backend function to send emails via SMTP (SendGrid, AWS SES)
-      // For this system, we will simulate it by creating internal notifications for the recipients.
-      
       let targetUserIds: string[] = [];
 
       if (recipientType === 'individual') {
-        // Find user by email
-        const { data, error } = await supabase.from('profiles').select('id').eq('email', recipientEmail).single();
+        // Find user by email AND school_id
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', recipientEmail)
+          .eq('school_id', profile.school_id) // STRICT FILTER
+          .single();
+
         if (error || !data) {
-          toast.error('Recipient email not found in system.');
+          toast.error('Recipient email not found in your school.');
           setLoading(false);
           return;
         }
         targetUserIds = [data.id];
       } else {
-        // Find all users in group
-        // Note: This is a heavy operation for large groups, should be handled by backend job
-        const { data, error } = await supabase.from('profiles').select('id').eq('role', recipientGroup);
+        // Find all users in group within the school
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', recipientGroup)
+          .eq('school_id', profile.school_id); // STRICT FILTER
+
         if (error) throw error;
         targetUserIds = data.map(u => u.id);
       }
 
       if (targetUserIds.length === 0) {
-        toast.error('No recipients found.');
+        toast.error('No recipients found in this group.');
         setLoading(false);
         return;
       }
@@ -56,13 +65,15 @@ const ComposeMessage: React.FC = () => {
         title: `New Message: ${subject}`,
         message: message.substring(0, 100) + (message.length > 100 ? '...' : ''),
         type: 'notice' as const,
-        link_to: '/noticeboard' // Or a specific inbox page if we built one
+        link_to: '/noticeboard'
       }));
 
-      // Batch insert notifications would be better, but createNotification is single
-      // We'll just do the first few to avoid spamming the API in this demo context
-      const batch = notifications.slice(0, 50); 
-      await Promise.all(batch.map(n => createNotification(n)));
+      // Batch insert (chunked to avoid limits)
+      const batchSize = 50;
+      for (let i = 0; i < notifications.length; i += batchSize) {
+          const batch = notifications.slice(i, i + batchSize);
+          await Promise.all(batch.map(n => createNotification(n)));
+      }
 
       toast.success(`Message sent to ${targetUserIds.length} recipient(s)!`);
       
@@ -86,7 +97,7 @@ const ComposeMessage: React.FC = () => {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Compose Message</h1>
-          <p className="text-slate-500">Send emails or internal messages to students and staff</p>
+          <p className="text-slate-500">Send internal messages to students and staff</p>
         </div>
       </div>
 

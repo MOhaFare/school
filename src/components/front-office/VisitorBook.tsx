@@ -8,8 +8,10 @@ import TableSkeleton from '../ui/TableSkeleton';
 import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { formatDate } from '../../utils/format';
+import { useGlobal } from '../../context/GlobalContext';
 
 const VisitorBook: React.FC = () => {
+  const { profile } = useGlobal();
   const [visitors, setVisitors] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -22,11 +24,17 @@ const VisitorBook: React.FC = () => {
 
   useEffect(() => {
     fetchVisitors();
-  }, []);
+  }, [profile]);
 
   const fetchVisitors = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
-    const { data, error } = await supabase.from('visitors').select('*').order('date', { ascending: false });
+    const { data, error } = await supabase
+      .from('visitors')
+      .select('*')
+      .eq('school_id', profile.school_id)
+      .order('date', { ascending: false });
+      
     if (error) toast.error('Failed to load visitors');
     else setVisitors(data || []);
     setLoading(false);
@@ -49,11 +57,13 @@ const VisitorBook: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
+      
       if (selectedVisitor) {
-        const { error } = await supabase.from('visitors').update(formData).eq('id', selectedVisitor.id);
+        const { error } = await supabase.from('visitors').update(payload).eq('id', selectedVisitor.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('visitors').insert(formData);
+        const { error } = await supabase.from('visitors').insert(payload);
         if (error) throw error;
       }
       toast.success('Visitor saved');

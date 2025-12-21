@@ -1,15 +1,61 @@
-import React from 'react';
-import { FileText, Activity } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Activity, Search } from 'lucide-react';
+import TableSkeleton from '../components/ui/TableSkeleton';
+import { supabase } from '../lib/supabaseClient';
+import { useGlobal } from '../context/GlobalContext';
+import toast from 'react-hot-toast';
 
-// Mock data for Audit Trail
-const auditLogs = [
-  { id: 1, action: 'Created Student', module: 'Students', user: 'Admin', details: 'Added John Doe to Class 10-A', time: new Date().toISOString() },
-  { id: 2, action: 'Updated Fee', module: 'Finance', user: 'Accountant', details: 'Updated Tuition Fee for Grade 9', time: new Date(Date.now() - 1800000).toISOString() },
-  { id: 3, action: 'Deleted Exam', module: 'Examinations', user: 'Admin', details: 'Removed Mid-Term Math Exam', time: new Date(Date.now() - 3600000).toISOString() },
-  { id: 4, action: 'Posted Notice', module: 'Noticeboard', user: 'Principal', details: 'Holiday Announcement', time: new Date(Date.now() - 7200000).toISOString() },
-];
+interface AuditLog {
+  id: string;
+  action: string;
+  module: string;
+  user_name: string;
+  details: string;
+  created_at: string;
+}
 
 const AuditTrail: React.FC = () => {
+  const { profile } = useGlobal();
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const fetchLogs = async () => {
+      if (!profile?.school_id && profile?.role !== 'system_admin') return;
+      
+      setLoading(true);
+      try {
+        let query = supabase
+          .from('audit_logs')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (profile.role !== 'system_admin') {
+            query = query.eq('school_id', profile.school_id);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        setLogs(data || []);
+      } catch (error: any) {
+        toast.error('Failed to load audit trail');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchLogs();
+  }, [profile]);
+
+  const filteredLogs = logs.filter(log => 
+    log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    log.module.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    log.user_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (loading) return <TableSkeleton title="Audit Trail" headers={['Action', 'Module', 'User', 'Details', 'Timestamp']} />;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -18,7 +64,20 @@ const AuditTrail: React.FC = () => {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Audit Trail</h1>
-          <p className="text-slate-500">Log of all system modifications and actions</p>
+          <p className="text-slate-500">Log of system modifications (Last 100 actions)</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+          <input 
+            type="text" 
+            placeholder="Search actions..." 
+            value={searchTerm} 
+            onChange={e => setSearchTerm(e.target.value)} 
+            className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg"
+          />
         </div>
       </div>
 
@@ -34,17 +93,20 @@ const AuditTrail: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {auditLogs.map((log) => (
+            {filteredLogs.map((log) => (
               <tr key={log.id} className="hover:bg-slate-50">
                 <td className="px-6 py-4 font-medium text-slate-900">{log.action}</td>
                 <td className="px-6 py-4">
                   <span className="px-2 py-1 bg-slate-100 rounded text-xs font-medium text-slate-600">{log.module}</span>
                 </td>
-                <td className="px-6 py-4 text-slate-600">{log.user}</td>
-                <td className="px-6 py-4 text-slate-600 text-sm">{log.details}</td>
-                <td className="px-6 py-4 text-slate-500 text-xs">{new Date(log.time).toLocaleString()}</td>
+                <td className="px-6 py-4 text-slate-600">{log.user_name || 'System'}</td>
+                <td className="px-6 py-4 text-slate-600 text-sm max-w-xs truncate" title={log.details}>{log.details}</td>
+                <td className="px-6 py-4 text-slate-500 text-xs">{new Date(log.created_at).toLocaleString()}</td>
               </tr>
             ))}
+            {filteredLogs.length === 0 && (
+                <tr><td colSpan={5} className="p-8 text-center text-slate-500">No activity recorded.</td></tr>
+            )}
           </tbody>
         </table>
       </div>

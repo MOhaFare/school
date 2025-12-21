@@ -45,37 +45,31 @@ const Homework: React.FC = () => {
   }, [profile]);
 
   const fetchData = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
     try {
       // 1. Determine User Context
       let studentClass = '';
+      let studentSection = '';
       let currentStudentId = null;
 
       if (profile?.role === 'student' && user) {
-        const { data: studentData } = await supabase.from('students').select('id, class').eq('user_id', user.id).single();
+        const { data: studentData } = await supabase.from('students').select('id, class, section').eq('user_id', user.id).eq('school_id', profile.school_id).single();
         if (studentData) {
           studentClass = studentData.class;
+          studentSection = studentData.section;
           currentStudentId = studentData.id;
           setStudentId(studentData.id);
         }
       }
 
       // 2. Fetch Homework
-      let homeworkQuery = supabase.from('homework').select('*, teachers(name)').order('created_at', { ascending: false });
+      let homeworkQuery = supabase.from('homework').select('*, teachers(name)').eq('school_id', profile.school_id).order('created_at', { ascending: false });
       
-      // Filter for students
-      if (profile?.role === 'student' && studentClass) {
-        // Simple filter by class number (assuming format "9", "10" etc stored in homework.class)
-        // Note: Homework table stores "Class 9" or "9". Need to be consistent. 
-        // For now assuming exact match or partial match logic if needed.
-        // Let's fetch all and filter in JS if structure varies, or rely on exact match.
-        // homeworkQuery = homeworkQuery.eq('class', studentClass); // Uncomment if strict
-      }
-
       const [homeworkRes, classesRes, teachersRes] = await Promise.all([
         homeworkQuery,
-        supabase.from('classes').select('id, name'),
-        supabase.from('teachers').select('id, name, user_id, subject')
+        supabase.from('classes').select('id, name').eq('school_id', profile.school_id),
+        supabase.from('teachers').select('id, name, user_id, subject').eq('school_id', profile.school_id)
       ]);
 
       if (homeworkRes.error) throw homeworkRes.error;
@@ -85,9 +79,21 @@ const Homework: React.FC = () => {
         teacher_name: h.teachers?.name || 'Unknown'
       }));
       
-      // If student, filter relevant homework manually to be safe with "Class 9" vs "9"
+      // If student, filter strictly by class AND section
       const relevantHomework = profile?.role === 'student' && studentClass
-        ? formattedHomework.filter((h: any) => h.class.includes(studentClass))
+        ? formattedHomework.filter((h: any) => {
+            // h.class stores "Class 9-A" or "9-A" typically.
+            // We need to match it against studentClass ("9") and studentSection ("A")
+            // Reconstruct the expected class name string.
+            // Note: The ClassForm saves name as `${grade}-${section}` (e.g. "9-A")
+            // But sometimes it might be displayed with "Class " prefix.
+            // Let's assume the DB stores "9-A" based on ClassForm logic.
+            
+            const targetClassName = `${studentClass}-${studentSection}`;
+            const targetClassNameWithPrefix = `Class ${studentClass}-${studentSection}`;
+            
+            return h.class === targetClassName || h.class === targetClassNameWithPrefix;
+        })
         : formattedHomework;
 
       setHomeworkList(relevantHomework);
@@ -163,11 +169,12 @@ const Homework: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
       if (selectedHomework) {
-        const { error } = await supabase.from('homework').update(formData).eq('id', selectedHomework.id);
+        const { error } = await supabase.from('homework').update(payload).eq('id', selectedHomework.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('homework').insert(formData);
+        const { error } = await supabase.from('homework').insert(payload);
         if (error) throw error;
       }
       toast.success('Homework saved successfully');

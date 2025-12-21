@@ -8,23 +8,37 @@ import Logo from '../components/ui/Logo';
 import { useGlobal } from '../context/GlobalContext';
 
 const Certificates: React.FC = () => {
+  const { profile, schoolName, schoolLogo, academicYear } = useGlobal();
   const [students, setStudents] = useState<any[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<string>('');
-  const [certType, setCertType] = useState('Completion');
+  const [certType, setCertType] = useState('Certificate of Completion');
   const componentRef = useRef<HTMLDivElement>(null);
-  const { schoolName } = useGlobal();
 
   useEffect(() => {
     const fetchStudents = async () => {
-      const { data } = await supabase.from('students').select('id, name, class, section').order('name');
+      if (!profile?.school_id) return;
+
+      const { data } = await supabase
+        .from('students')
+        .select('id, name, class, section')
+        .eq('school_id', profile.school_id)
+        .eq('status', 'active')
+        .order('name');
+        
       if (data) setStudents(data);
     };
     fetchStudents();
-  }, []);
+  }, [profile]);
 
   const handlePrint = useReactToPrint({
     content: () => componentRef.current,
     documentTitle: 'Certificate',
+    pageStyle: `
+      @page { size: landscape; margin: 0; }
+      @media print {
+        body { -webkit-print-color-adjust: exact; }
+      }
+    `
   });
 
   const student = students.find(s => s.id === selectedStudent);
@@ -61,41 +75,68 @@ const Certificates: React.FC = () => {
         </div>
 
         {student ? (
-          <div className="border-2 border-dashed border-slate-300 p-8 bg-slate-50 flex justify-center">
-            <div ref={componentRef} className="w-[800px] h-[600px] bg-white border-[10px] border-double border-blue-900 p-12 flex flex-col items-center text-center relative print:break-inside-avoid">
-              <div className="absolute top-8 left-8 opacity-10"><Logo className="scale-[2]" /></div>
-              <div className="absolute bottom-8 right-8 opacity-10"><Logo className="scale-[2]" /></div>
+          <div className="border-2 border-dashed border-slate-300 p-4 bg-slate-50 flex justify-center overflow-auto">
+            <div ref={componentRef} className="w-[297mm] h-[210mm] bg-white border-[12px] border-double border-blue-900 p-16 flex flex-col items-center text-center relative print:break-inside-avoid shadow-xl mx-auto">
               
-              <Logo className="scale-150 mb-6" />
-              <h1 className="text-4xl font-serif font-bold text-blue-900 uppercase tracking-widest mb-2">{schoolName}</h1>
-              <p className="text-slate-500 italic mb-12">Excellence in Education</p>
+              {/* Watermark */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.05] z-0">
+                 {schoolLogo ? <img src={schoolLogo} className="w-[500px] h-[500px] object-contain grayscale" /> : <Logo className="scale-[10]" />}
+              </div>
 
-              <h2 className="text-3xl font-serif font-bold text-yellow-600 mb-8 uppercase border-b-2 border-yellow-600 pb-2 px-8">{certType}</h2>
+              {/* Corner Decorations */}
+              <div className="absolute top-4 left-4 w-16 h-16 border-t-4 border-l-4 border-yellow-500"></div>
+              <div className="absolute top-4 right-4 w-16 h-16 border-t-4 border-r-4 border-yellow-500"></div>
+              <div className="absolute bottom-4 left-4 w-16 h-16 border-b-4 border-l-4 border-yellow-500"></div>
+              <div className="absolute bottom-4 right-4 w-16 h-16 border-b-4 border-r-4 border-yellow-500"></div>
 
-              <p className="text-lg text-slate-700 mb-4">This is to certify that</p>
-              <h3 className="text-4xl font-script font-bold text-slate-900 mb-4 italic">{student.name}</h3>
-              <p className="text-lg text-slate-700 mb-8 max-w-lg">
-                has successfully completed the academic requirements for <strong>Class {student.class}</strong> during the academic year 2024-2025.
-              </p>
+              <div className="relative z-10 w-full flex flex-col items-center h-full">
+                  {/* Header Logo */}
+                  <div className="mb-6">
+                    {schoolLogo ? (
+                        <img src={schoolLogo} alt="School Logo" className="h-28 w-28 object-contain" />
+                    ) : (
+                        <Logo className="scale-[2]" />
+                    )}
+                  </div>
+                  
+                  <h1 className="text-5xl font-serif font-bold text-blue-900 uppercase tracking-widest mb-2">{schoolName}</h1>
+                  <p className="text-slate-500 italic mb-10 text-lg">Excellence in Education</p>
 
-              <div className="mt-auto flex justify-between w-full px-12">
-                <div className="text-center">
-                  <p className="text-lg font-bold text-slate-900">{new Date().toLocaleDateString()}</p>
-                  <div className="w-40 h-px bg-slate-900 mt-1"></div>
-                  <p className="text-sm text-slate-500 mt-1">Date</p>
-                </div>
-                <div className="text-center">
-                  <div className="h-8"></div> {/* Signature Space */}
-                  <div className="w-40 h-px bg-slate-900 mt-1"></div>
-                  <p className="text-sm text-slate-500 mt-1">Principal Signature</p>
-                </div>
+                  <h2 className="text-4xl font-serif font-bold text-yellow-600 mb-12 uppercase border-b-2 border-yellow-600 pb-2 px-12">{certType}</h2>
+
+                  <div className="flex-grow flex flex-col justify-center w-full">
+                      <p className="text-2xl text-slate-600 mb-8 font-serif italic">This is to certify that</p>
+                      
+                      <h3 className="text-6xl font-serif font-bold text-slate-900 mb-8 italic px-12 py-2">
+                        {student.name}
+                      </h3>
+                      
+                      <p className="text-2xl text-slate-700 max-w-4xl mx-auto leading-relaxed font-serif">
+                        has successfully completed the academic requirements for <br/>
+                        <span className="font-bold text-blue-900 text-3xl mx-2">Class {student.class}</span> <br/>
+                        during the academic year <strong>{academicYear}</strong>.
+                      </p>
+                  </div>
+
+                  <div className="mt-auto flex justify-between w-full px-20 pt-16">
+                    <div className="text-center">
+                      <p className="text-xl font-bold text-slate-900">{new Date().toLocaleDateString()}</p>
+                      <div className="w-64 h-0.5 bg-slate-900 mt-2"></div>
+                      <p className="text-lg text-slate-500 mt-2 font-serif font-bold">Date</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="h-7"></div> {/* Signature Space */}
+                      <div className="w-64 h-0.5 bg-slate-900 mt-2"></div>
+                      <p className="text-lg text-slate-500 mt-2 font-serif font-bold">Principal Signature</p>
+                    </div>
+                  </div>
               </div>
             </div>
           </div>
         ) : (
-          <div className="text-center py-12 text-slate-400">
-            <Award size={48} className="mx-auto mb-4 opacity-50" />
-            <p>Select a student to preview the certificate</p>
+          <div className="text-center py-20 text-slate-400 bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
+            <Award size={64} className="mx-auto mb-4 opacity-50" />
+            <p className="text-lg">Select a student to generate their certificate</p>
           </div>
         )}
       </div>

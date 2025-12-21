@@ -8,7 +8,8 @@ import { Select } from '../components/ui/Select';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import TableSkeleton from '../components/ui/TableSkeleton';
-import { formatCurrency, formatDate } from '../utils/format';
+import { formatCurrency } from '../utils/format';
+import { useGlobal } from '../context/GlobalContext';
 
 interface InventoryItem {
   id: string;
@@ -21,6 +22,7 @@ interface InventoryItem {
 }
 
 const Inventory: React.FC = () => {
+  const { profile } = useGlobal();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,11 +34,17 @@ const Inventory: React.FC = () => {
 
   useEffect(() => {
     fetchItems();
-  }, []);
+  }, [profile]);
 
   const fetchItems = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
-    const { data, error } = await supabase.from('inventory_items').select('*').order('name');
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .select('*')
+      .eq('school_id', profile.school_id)
+      .order('name');
+      
     if (error) toast.error('Failed to load inventory');
     else setItems(data || []);
     setLoading(false);
@@ -44,11 +52,13 @@ const Inventory: React.FC = () => {
 
   const handleSave = async () => {
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
+      
       if (selectedItem) {
-        const { error } = await supabase.from('inventory_items').update(formData).eq('id', selectedItem.id);
+        const { error } = await supabase.from('inventory_items').update(payload).eq('id', selectedItem.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('inventory_items').insert(formData);
+        const { error } = await supabase.from('inventory_items').insert(payload);
         if (error) throw error;
       }
       toast.success(selectedItem ? 'Item updated' : 'Item added');

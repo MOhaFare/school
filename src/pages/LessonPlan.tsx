@@ -27,7 +27,7 @@ interface LessonPlanItem {
 }
 
 const LessonPlan: React.FC = () => {
-  const { profile } = useGlobal();
+  const { profile, user } = useGlobal();
   const [lessons, setLessons] = useState<LessonPlanItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -49,17 +49,26 @@ const LessonPlan: React.FC = () => {
   useEffect(() => {
     fetchLessons();
     fetchTeachers();
-  }, []);
+  }, [profile]);
 
   const fetchLessons = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
-    let query = supabase.from('lesson_plans').select('*, teachers(name)').order('date', { ascending: false });
+    let query = supabase.from('lesson_plans').select('*, teachers(name)').eq('school_id', profile.school_id).order('date', { ascending: false });
     
     // If teacher, only show their lessons
     if (profile?.role === 'teacher') {
         const { data: teacherData } = await supabase.from('teachers').select('id').eq('user_id', profile.id).single();
         if (teacherData) {
             query = query.eq('teacher_id', teacherData.id);
+        }
+    }
+    
+    // If student, filter by their class and section
+    if (profile?.role === 'student' && user) {
+        const { data: studentData } = await supabase.from('students').select('class, section').eq('user_id', user.id).eq('school_id', profile.school_id).single();
+        if (studentData) {
+            query = query.eq('class', studentData.class).eq('section', studentData.section);
         }
     }
 
@@ -75,7 +84,8 @@ const LessonPlan: React.FC = () => {
   };
 
   const fetchTeachers = async () => {
-    const { data } = await supabase.from('teachers').select('id, name');
+    if (!profile?.school_id) return;
+    const { data } = await supabase.from('teachers').select('id, name').eq('school_id', profile.school_id);
     if (data) setTeachers(data);
   };
 
@@ -114,11 +124,13 @@ const LessonPlan: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
+      
       if (selectedLesson) {
-        const { error } = await supabase.from('lesson_plans').update(formData).eq('id', selectedLesson.id);
+        const { error } = await supabase.from('lesson_plans').update(payload).eq('id', selectedLesson.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('lesson_plans').insert(formData);
+        const { error } = await supabase.from('lesson_plans').insert(payload);
         if (error) throw error;
       }
       toast.success('Lesson plan saved');
@@ -148,6 +160,8 @@ const LessonPlan: React.FC = () => {
       }
   };
 
+  const canEdit = profile?.role === 'admin' || profile?.role === 'teacher';
+
   if (loading) return <TableSkeleton title="Lesson Planning" headers={['Date', 'Class', 'Subject', 'Topic', 'Status', 'Actions']} />;
 
   return (
@@ -157,7 +171,7 @@ const LessonPlan: React.FC = () => {
           <h1 className="text-2xl font-bold text-slate-900">Lesson Planning</h1>
           <p className="text-slate-500">Manage syllabus and daily teaching plans</p>
         </div>
-        <Button onClick={() => handleOpenModal()}><Plus size={20} className="mr-2"/> Add Lesson Plan</Button>
+        {canEdit && <Button onClick={() => handleOpenModal()}><Plus size={20} className="mr-2"/> Add Lesson Plan</Button>}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
@@ -190,11 +204,15 @@ const LessonPlan: React.FC = () => {
                   </Badge>
                 </td>
                 <td className="px-6 py-4 text-right flex justify-end gap-2">
-                  {lesson.status !== 'completed' && (
-                      <button onClick={() => handleStatusChange(lesson.id, 'completed')} className="text-green-600 hover:bg-green-50 p-1 rounded" title="Mark Complete"><CheckCircle size={16}/></button>
+                  {canEdit && (
+                    <>
+                        {lesson.status !== 'completed' && (
+                            <button onClick={() => handleStatusChange(lesson.id, 'completed')} className="text-green-600 hover:bg-green-50 p-1 rounded" title="Mark Complete"><CheckCircle size={16}/></button>
+                        )}
+                        <button onClick={() => handleOpenModal(lesson)} className="text-slate-500 hover:text-blue-600 p-1 rounded"><Edit size={16}/></button>
+                        <button onClick={() => handleDelete(lesson.id)} className="text-slate-500 hover:text-red-600 p-1 rounded"><Trash2 size={16}/></button>
+                    </>
                   )}
-                  <button onClick={() => handleOpenModal(lesson)} className="text-slate-500 hover:text-blue-600 p-1 rounded"><Edit size={16}/></button>
-                  <button onClick={() => handleDelete(lesson.id)} className="text-slate-500 hover:text-red-600 p-1 rounded"><Trash2 size={16}/></button>
                 </td>
               </tr>
             ))}

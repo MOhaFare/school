@@ -2,15 +2,21 @@ import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
 import { Skeleton } from '../ui/Skeleton';
+import { useGlobal } from '../../context/GlobalContext';
 
 const TransportReport: React.FC = () => {
+  const { profile } = useGlobal();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
-      const { data: vehicles } = await supabase.from('transport_vehicles').select('vehicle_number, capacity, student_count');
+      const { data: vehicles } = await supabase
+        .from('transport_vehicles')
+        .select('vehicle_number, capacity, student_count')
+        .eq('school_id', profile.school_id);
       
       if (vehicles) {
         const chartData = vehicles.map((v: any) => ({
@@ -23,7 +29,7 @@ const TransportReport: React.FC = () => {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [profile]);
 
   if (loading) return <Skeleton className="h-96 w-full" />;
 

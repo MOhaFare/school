@@ -7,6 +7,7 @@ import VehicleForm from '../components/transport/VehicleForm';
 import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useGlobal } from '../context/GlobalContext';
 
 const transformVehicleToCamelCase = (dbVehicle: any): TransportVehicle => ({
   id: dbVehicle.id,
@@ -19,6 +20,7 @@ const transformVehicleToCamelCase = (dbVehicle: any): TransportVehicle => ({
 });
 
 const Transport: React.FC = () => {
+  const { profile } = useGlobal();
   const [transportVehicles, setTransportVehicles] = useState<TransportVehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -31,21 +33,26 @@ const Transport: React.FC = () => {
 
   useEffect(() => {
     const fetchVehicles = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
       try {
-        const { data, error } = await supabase.from('transport_vehicles').select('*').order('vehicle_number');
+        const { data, error } = await supabase
+          .from('transport_vehicles')
+          .select('*')
+          .eq('school_id', profile.school_id)
+          .order('vehicle_number');
+          
         if (error) throw error;
         setTransportVehicles(data.map(transformVehicleToCamelCase));
       } catch (error: any) {
         const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
         toast.error(`Failed to fetch vehicles: ${errorMessage}`);
-        console.error("Error fetching vehicles:", error);
       } finally {
         setLoading(false);
       }
     };
     fetchVehicles();
-  }, []);
+  }, [profile]);
 
   const filteredVehicles = transportVehicles.filter(v =>
     v.vehicleNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -76,6 +83,7 @@ const Transport: React.FC = () => {
       route: formData.route,
       capacity: formData.capacity,
       student_count: formData.studentCount,
+      school_id: profile?.school_id
     };
     await toast.promise(
       (async () => {

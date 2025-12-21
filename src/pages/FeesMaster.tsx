@@ -1,143 +1,228 @@
-import React, { useState, useEffect } from 'react';
-import { DollarSign, Plus, Edit, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Edit, Trash2, Search, Filter } from 'lucide-react';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
-import { Label } from '../components/ui/Label';
 import Modal from '../components/ui/Modal';
 import TableSkeleton from '../components/ui/TableSkeleton';
+import FeeMasterForm from '../components/fees/FeeMasterForm';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
-import { formatCurrency, formatDate } from '../utils/format';
+import { useGlobal } from '../context/GlobalContext';
+import { formatCurrency } from '../utils/format';
 
 interface FeeMaster {
   id: string;
   name: string;
   amount: number;
-  due_date: string;
+  grade: string | null;
   description: string;
+  frequency: 'monthly' | 'one-time' | 'yearly';
+  school_id: string;
 }
 
 const FeesMaster: React.FC = () => {
-  const [fees, setFees] = useState<FeeMaster[]>([]);
+  const { profile } = useGlobal();
+  const [feeMasters, setFeeMasters] = useState<FeeMaster[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setModalOpen] = useState(false);
   const [selectedFee, setSelectedFee] = useState<FeeMaster | null>(null);
-  const [formData, setFormData] = useState({
-    name: '', amount: 0, due_date: '', description: ''
-  });
+  const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const formRef = useRef<HTMLFormElement>(null);
+
+  const fetchFees = async () => {
+    if (!profile?.school_id) return;
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('fee_masters')
+        .select('*')
+        .eq('school_id', profile.school_id)
+        .order('grade', { ascending: true, nullsFirst: true })
+        .order('name');
+
+      if (error) throw error;
+      setFeeMasters(data || []);
+    } catch (error: any) {
+      toast.error(`Failed to load fees: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchFees();
-  }, []);
+  }, [profile]);
 
-  const fetchFees = async () => {
-    setLoading(true);
-    const { data, error } = await supabase.from('fee_masters').select('*').order('name');
-    if (error) toast.error('Failed to load fees master');
-    else setFees(data || []);
-    setLoading(false);
-  };
+  const filteredFees = feeMasters.filter(fee =>
+    fee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (fee.grade && fee.grade.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
 
-  const handleOpenModal = (fee?: FeeMaster) => {
-    setSelectedFee(fee || null);
-    setFormData({
-      name: fee?.name || '',
-      amount: fee?.amount || 0,
-      due_date: fee?.due_date || '',
-      description: fee?.description || ''
-    });
+  const handleAdd = () => {
+    setSelectedFee(null);
     setModalOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleEdit = (fee: FeeMaster) => {
+    setSelectedFee(fee);
+    setModalOpen(true);
+  };
+
+  const handleDelete = (fee: FeeMaster) => {
+    setSelectedFee(fee);
+    setDeleteModalOpen(true);
+  };
+
+  const handleSave = async (data: Omit<FeeMaster, 'id' | 'school_id'> & { id?: string }) => {
+    setIsSubmitting(true);
     try {
-      if (selectedFee) {
-        const { error } = await supabase.from('fee_masters').update(formData).eq('id', selectedFee.id);
+      const feeData = {
+        ...data,
+        school_id: profile?.school_id
+      };
+
+      if (data.id) {
+        const { error } = await supabase.from('fee_masters').update(feeData).eq('id', data.id);
         if (error) throw error;
+        toast.success('Fee updated successfully');
       } else {
-        const { error } = await supabase.from('fee_masters').insert(formData);
+        const { error } = await supabase.from('fee_masters').insert(feeData);
         if (error) throw error;
+        toast.success('Fee created successfully');
       }
-      toast.success('Fee structure saved');
       setModalOpen(false);
       fetchFees();
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(`Error saving fee: ${error.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this fee structure?')) return;
-    const { error } = await supabase.from('fee_masters').delete().eq('id', id);
-    if (error) toast.error(error.message);
-    else {
-      toast.success('Deleted successfully');
+  const confirmDelete = async () => {
+    if (!selectedFee) return;
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.from('fee_masters').delete().eq('id', selectedFee.id);
+      if (error) throw error;
+      toast.success('Fee deleted successfully');
+      setDeleteModalOpen(false);
       fetchFees();
+    } catch (error: any) {
+      toast.error(`Error deleting fee: ${error.message}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  if (loading) return <TableSkeleton title="Fees Master" headers={['Fee Name', 'Amount', 'Due Date', 'Description', 'Actions']} />;
+  if (loading) return <TableSkeleton title="Fees Master" headers={['Name', 'Grade', 'Amount', 'Frequency', 'Actions']} />;
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Fees Master</h1>
-          <p className="text-slate-500">Define standard fee structures and types</p>
+          <p className="text-slate-500 mt-1">Define tuition and other fee structures per grade.</p>
         </div>
-        <Button onClick={() => handleOpenModal()}><Plus size={20} className="mr-2"/> Add Fee Type</Button>
+        <Button onClick={handleAdd}>
+          <Plus size={18} className="mr-2" /> Add Fee Structure
+        </Button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+          <input
+            type="text"
+            placeholder="Search fees..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+          />
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="min-w-full divide-y divide-slate-200">
-          <thead className="bg-slate-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Fee Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Amount</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Default Due Date</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Description</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200">
-            {fees.map(fee => (
-              <tr key={fee.id} className="hover:bg-slate-50">
-                <td className="px-6 py-4 font-medium text-slate-900">{fee.name}</td>
-                <td className="px-6 py-4 font-bold text-slate-900">{formatCurrency(fee.amount)}</td>
-                <td className="px-6 py-4 text-slate-600">{fee.due_date ? formatDate(fee.due_date) : 'N/A'}</td>
-                <td className="px-6 py-4 text-slate-600 text-sm">{fee.description}</td>
-                <td className="px-6 py-4 text-right flex justify-end gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => handleOpenModal(fee)}><Edit size={16}/></Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDelete(fee.id)}><Trash2 size={16} className="text-red-500"/></Button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Fee Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Grade</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Amount</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Frequency</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
-            ))}
-            {fees.length === 0 && <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-500">No fee structures defined.</td></tr>}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white divide-y divide-slate-200">
+              {filteredFees.map((fee) => (
+                <tr key={fee.id} className="hover:bg-slate-50">
+                  <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-900">{fee.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {fee.grade ? (
+                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                        {fee.grade}
+                      </span>
+                    ) : (
+                      <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs font-medium">
+                        All Grades
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap font-bold text-slate-700">{formatCurrency(fee.amount)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap capitalize text-slate-600">{fee.frequency}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-right">
+                    <Button variant="ghost" size="icon" onClick={() => handleEdit(fee)}>
+                      <Edit className="h-4 w-4 text-slate-500 hover:text-blue-600" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(fee)}>
+                      <Trash2 className="h-4 w-4 text-slate-500 hover:text-red-600" />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+              {filteredFees.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-slate-500">
+                    No fee structures found. Add one to get started.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setModalOpen(false)} title={selectedFee ? 'Edit Fee Type' : 'Add Fee Type'} footer={<><Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button><Button onClick={handleSave}>Save</Button></>}>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Fee Name</Label>
-            <Input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g. Tuition Fee - Grade 10" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Amount</Label>
-              <Input type="number" value={formData.amount} onChange={e => setFormData({...formData, amount: parseFloat(e.target.value)})} />
-            </div>
-            <div className="space-y-2">
-              <Label>Default Due Date</Label>
-              <Input type="date" value={formData.due_date} onChange={e => setFormData({...formData, due_date: e.target.value})} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Input value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-          </div>
-        </div>
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setModalOpen(false)}
+        title={selectedFee ? 'Edit Fee Structure' : 'Add Fee Structure'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>
+            <Button onClick={() => formRef.current?.requestSubmit()} loading={isSubmitting}>
+              {selectedFee ? 'Save Changes' : 'Add Fee'}
+            </Button>
+          </>
+        }
+      >
+        <FeeMasterForm ref={formRef} feeMaster={selectedFee} onSubmit={handleSave} />
+      </Modal>
+
+      <Modal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        title="Delete Fee Structure"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
+            <Button variant="danger" onClick={confirmDelete} loading={isSubmitting}>Delete</Button>
+          </>
+        }
+      >
+        <p>Are you sure you want to delete <strong>{selectedFee?.name}</strong>? This will not affect fees already generated for students.</p>
       </Modal>
     </div>
   );

@@ -1,18 +1,18 @@
 import React from 'react';
-import { Student, Grade, Exam } from '../../types';
+import { Student, Grade } from '../../types';
 import Logo from '../ui/Logo';
 import { formatDate } from '../../utils/format';
 
 interface TranscriptProps {
   student: Student;
-  groupedGrades: Record<string, (Grade & { examName: string; total_marks: number })[]>;
+  groupedGrades: Record<string, Record<string, (Grade & { examName: string; total_marks: number })[]>>;
   schoolName: string;
   academicYear: string;
 }
 
 const StudentTranscriptTemplate = React.forwardRef<HTMLDivElement, TranscriptProps>(({ student, groupedGrades, schoolName, academicYear }, ref) => {
   // Calculate Cumulative Stats
-  const allGrades = Object.values(groupedGrades).flat();
+  const allGrades = Object.values(groupedGrades).flatMap(sem => Object.values(sem).flat());
   const totalMarksObtained = allGrades.reduce((sum, g) => sum + g.marks_obtained, 0);
   const totalMaxMarks = allGrades.reduce((sum, g) => sum + g.total_marks, 0);
   const overallPercentage = totalMaxMarks > 0 ? (totalMarksObtained / totalMaxMarks) * 100 : 0;
@@ -78,44 +78,49 @@ const StudentTranscriptTemplate = React.forwardRef<HTMLDivElement, TranscriptPro
           </div>
         </div>
 
-        {/* Grades Tables */}
+        {/* Grades Tables - Grouped by Semester */}
         <div className="space-y-8">
-          {Object.entries(groupedGrades).map(([examName, grades]) => {
-             const examTotal = grades.reduce((sum, g) => sum + g.marks_obtained, 0);
-             const examMax = grades.reduce((sum, g) => sum + g.total_marks, 0);
-             const examAvg = grades.length > 0 ? (grades.reduce((sum, g) => sum + g.percentage, 0) / grades.length) : 0;
-
-             return (
-              <div key={examName} className="break-inside-avoid">
-                <div className="flex justify-between items-end mb-2 border-b border-slate-400 pb-1">
-                  <h3 className="text-lg font-bold uppercase text-slate-800">{examName}</h3>
-                  <span className="text-xs font-medium text-slate-500">Exam Summary: {examTotal}/{examMax} ({((examTotal/examMax)*100).toFixed(1)}%)</span>
-                </div>
-                <table className="w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="py-2 px-3 text-left font-bold w-1/3">Subject</th>
-                      <th className="py-2 px-3 text-center font-bold">Marks</th>
-                      <th className="py-2 px-3 text-center font-bold">Total</th>
-                      <th className="py-2 px-3 text-center font-bold">Grade</th>
-                      <th className="py-2 px-3 text-center font-bold">Points (GPA)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {grades.map((grade) => (
-                      <tr key={grade.id} className="border-b border-slate-200">
-                        <td className="py-2 px-3">{grade.subject}</td>
-                        <td className="py-2 px-3 text-center">{grade.marks_obtained}</td>
-                        <td className="py-2 px-3 text-center text-slate-500">{grade.total_marks}</td>
-                        <td className="py-2 px-3 text-center font-bold">{grade.grade}</td>
-                        <td className="py-2 px-3 text-center">{grade.gpa.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            );
-          })}
+          {Object.entries(groupedGrades).map(([semester, exams]) => (
+            <div key={semester} className="break-inside-avoid">
+              <h2 className="text-xl font-bold uppercase text-blue-900 border-b-2 border-blue-900 pb-2 mb-4">{semester}</h2>
+              
+              {Object.entries(exams).map(([examName, grades]) => {
+                 const examTotal = grades.reduce((sum, g) => sum + g.marks_obtained, 0);
+                 const examMax = grades.reduce((sum, g) => sum + g.total_marks, 0);
+                 
+                 return (
+                  <div key={examName} className="mb-6">
+                    <div className="flex justify-between items-end mb-2 border-b border-slate-400 pb-1">
+                      <h3 className="text-md font-bold uppercase text-slate-800">{examName}</h3>
+                      <span className="text-xs font-medium text-slate-500">Summary: {examTotal}/{examMax} ({((examTotal/examMax)*100).toFixed(1)}%)</span>
+                    </div>
+                    <table className="w-full border-collapse text-sm">
+                      <thead>
+                        <tr className="bg-slate-100 border-b border-slate-300">
+                          <th className="py-2 px-3 text-left font-bold w-1/3">Subject</th>
+                          <th className="py-2 px-3 text-center font-bold">Marks</th>
+                          <th className="py-2 px-3 text-center font-bold">Total</th>
+                          <th className="py-2 px-3 text-center font-bold">Grade</th>
+                          <th className="py-2 px-3 text-center font-bold">Points (GPA)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {grades.map((grade) => (
+                          <tr key={grade.id} className="border-b border-slate-200">
+                            <td className="py-2 px-3">{grade.subject}</td>
+                            <td className="py-2 px-3 text-center">{grade.marks_obtained}</td>
+                            <td className="py-2 px-3 text-center text-slate-500">{grade.total_marks}</td>
+                            <td className="py-2 px-3 text-center font-bold">{grade.grade}</td>
+                            <td className="py-2 px-3 text-center">{grade.gpa.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
 
         {/* Cumulative Summary */}

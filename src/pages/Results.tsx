@@ -17,12 +17,14 @@ type EnrichedGrade = Grade & {
   examName: string;
   subject: string;
   total_marks: number;
+  semester?: string;
 };
 
 const Results: React.FC = () => {
   const [grades, setGrades] = useState<EnrichedGrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeSemester, setActiveSemester] = useState('First Semester');
   
   // Modals
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -45,7 +47,7 @@ const Results: React.FC = () => {
           .select(`
             *,
             students ( id, name ),
-            exams ( id, name, subject, total_marks )
+            exams ( id, name, subject, total_marks, semester )
           `)
           .order('date', { ascending: false })
           .limit(500); // Limit initial load for performance
@@ -67,6 +69,7 @@ const Results: React.FC = () => {
           examName: g.exams?.name || 'Unknown Exam',
           subject: g.exams?.subject || 'Unknown Subject',
           total_marks: g.exams?.total_marks || 100,
+          semester: g.exams?.semester || 'N/A',
         }));
 
         setGrades(transformedGrades);
@@ -80,11 +83,16 @@ const Results: React.FC = () => {
     fetchData();
   }, []);
 
-  const filteredGrades = grades.filter(grade =>
-    grade.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    grade.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    grade.examName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredGrades = grades.filter(grade => {
+    const matchesSearch = 
+      grade.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      grade.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      grade.examName.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesSemester = grade.semester === activeSemester;
+    
+    return matchesSearch && matchesSemester;
+  });
 
   const summaryStats = useMemo(() => {
     if (grades.length === 0) {
@@ -175,7 +183,8 @@ const Results: React.FC = () => {
             totalMarks: examRes.data.total_marks,
             passingMarks: examRes.data.passing_marks,
             duration: examRes.data.duration,
-            status: examRes.data.status
+            status: examRes.data.status,
+            semester: examRes.data.semester,
         };
 
         setFullReportData({
@@ -194,10 +203,10 @@ const Results: React.FC = () => {
   };
 
   const handleExport = () => {
-    const headers = ["Student", "Exam", "Subject", "Score", "Total", "Percentage", "Grade", "GPA", "Date"];
+    const headers = ["Student", "Exam", "Semester", "Subject", "Score", "Total", "Percentage", "Grade", "GPA", "Date"];
     const csvContent = "data:text/csv;charset=utf-8,"
       + headers.join(",") + "\n"
-      + grades.map(g => `"${g.studentName}","${g.examName}","${g.subject}","${g.marks_obtained}","${g.total_marks}","${g.percentage}","${g.grade}","${g.gpa}","${g.date}"`).join("\n");
+      + grades.map(g => `"${g.studentName}","${g.examName}","${g.semester}","${g.subject}","${g.marks_obtained}","${g.total_marks}","${g.percentage}","${g.grade}","${g.gpa}","${g.date}"`).join("\n");
     
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -212,6 +221,12 @@ const Results: React.FC = () => {
   const handlePrint = useReactToPrint({
     content: () => printRef.current,
     documentTitle: `Report-Card-${selectedGrade?.studentName}`,
+    onBeforeGetContent: () => {
+      if (!printRef.current) {
+        toast.error("Content not ready for printing");
+        return Promise.reject();
+      }
+    }
   });
 
   if (loading) {
@@ -285,9 +300,26 @@ const Results: React.FC = () => {
         </div>
       </div>
 
+      {/* Semester Tabs */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50">
-          <div className="relative">
+        <div className="flex overflow-x-auto border-b border-gray-200">
+            {['First Semester', 'Second Semester', 'Summer Semester'].map(sem => (
+                <button
+                    key={sem}
+                    onClick={() => setActiveSemester(sem)}
+                    className={`flex-1 py-4 px-6 text-sm font-medium whitespace-nowrap transition-colors ${
+                        activeSemester === sem 
+                        ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' 
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                >
+                    {sem}
+                </button>
+            ))}
+        </div>
+
+        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row gap-4">
+          <div className="relative flex-grow">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
             <input
               type="text"
@@ -319,6 +351,7 @@ const Results: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="font-medium text-slate-900">{grade.examName}</div>
                     <div className="text-xs text-slate-500">{grade.subject}</div>
+                    <div className="text-xs text-gray-400">{grade.semester}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="font-medium text-slate-900">{grade.marks_obtained} / {grade.total_marks}</div>
@@ -339,7 +372,7 @@ const Results: React.FC = () => {
         </div>
         {filteredGrades.length === 0 && (
           <div className="p-12 text-center">
-            <p className="text-slate-500">No results found for your search.</p>
+            <p className="text-slate-500">No results found for {activeSemester}.</p>
           </div>
         )}
       </div>

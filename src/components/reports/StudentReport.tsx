@@ -2,17 +2,23 @@ import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
 import { Skeleton } from '../ui/Skeleton';
+import { useGlobal } from '../../context/GlobalContext';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
 const StudentReport: React.FC = () => {
+  const { profile } = useGlobal();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
-      const { data: students } = await supabase.from('students').select('*');
+      const { data: students } = await supabase
+        .from('students')
+        .select('*')
+        .eq('school_id', profile.school_id);
       
       if (students) {
         // Status Distribution
@@ -35,7 +41,7 @@ const StudentReport: React.FC = () => {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [profile]);
 
   if (loading) return <Skeleton className="h-96 w-full" />;
 

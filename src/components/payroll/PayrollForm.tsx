@@ -70,7 +70,7 @@ const PayrollForm = forwardRef<HTMLFormElement, PayrollFormProps>(({ payroll, te
     onSubmit({ ...formData, id: payroll?.id });
   };
 
-  const netSalary = baseSalary + formData.bonus - formData.deductions;
+  const netSalary = (baseSalary || 0) + (formData.bonus || 0) - (formData.deductions || 0);
 
   return (
     <form ref={ref} onSubmit={handleSubmit} className="space-y-6">

@@ -54,7 +54,9 @@ const Classes: React.FC = () => {
         }
 
         // 2. Build Classes Query
-        let classesQuery = supabase.from('classes').select('*').eq('school_id', profile.school_id);
+        let classesQuery = supabase.from('classes')
+            .select('*, subject_groups(subjects)') // Fetch linked subjects
+            .eq('school_id', profile.school_id);
         
         // If Teacher, only show their assigned classes
         if (teacherFilterId) {
@@ -92,14 +94,21 @@ const Classes: React.FC = () => {
             }, 0);
 
             const averageGpa = classGrades.length > 0 ? totalGpa / classGrades.length : 0;
-            const classSubjects = [...new Set(classGrades.map((g: any) => g.exams?.subject).filter(Boolean))];
+            
+            // Use explicitly assigned subjects from Subject Group if available
+            const assignedSubjects = cls.subject_groups?.subjects || [];
+            // Fallback to subjects inferred from exams if no group assigned
+            const inferredSubjects = [...new Set(classGrades.map((g: any) => g.exams?.subject).filter(Boolean))];
+            
+            const displaySubjects = assignedSubjects.length > 0 ? assignedSubjects : inferredSubjects;
+
             const teacher = teachersData?.find(t => t.id === cls.teacher_id);
             return { 
               ...cls, 
               name: `Class ${cls.name}`, 
               studentCount: classStudents.length, 
               averageGpa, 
-              subjects: classSubjects, 
+              subjects: displaySubjects, 
               teacher: { id: teacher?.id || '', name: teacher?.name || 'Unassigned' } 
             };
         });
@@ -134,48 +143,27 @@ const Classes: React.FC = () => {
     setDeleteModalOpen(true);
   };
 
-  const handleSaveClass = async (formData: { name: string; teacher_id: string; capacity: number; id?: string }) => {
+  const handleSaveClass = async (formData: { name: string; teacher_id: string; capacity: number; id?: string; school_id?: string; subject_group_id?: string }) => {
     setIsSubmitting(true);
     await toast.promise(
       (async () => {
         const classToSave = {
           name: formData.name,
-          teacher_id: formData.teacher_id || null, // Handle empty string for UUID
+          teacher_id: formData.teacher_id || null,
           capacity: formData.capacity,
-          school_id: profile?.school_id // Ensure school_id is set
+          school_id: profile?.school_id,
+          subject_group_id: formData.subject_group_id || null
         };
         
         if (formData.id) {
-          const { data, error } = await supabase.from('classes').update(classToSave).eq('id', formData.id).select().single();
+          const { error } = await supabase.from('classes').update(classToSave).eq('id', formData.id);
           if (error) throw new Error(error.message);
-          
-          setClasses(prev => prev.map(c => {
-            if (c.id === formData.id) {
-              const teacher = teachers.find(t => t.id === data.teacher_id);
-              return {
-                ...c,
-                name: `Class ${data.name}`,
-                teacher: { id: teacher?.id || data.teacher_id || '', name: teacher?.name || 'Unassigned' },
-                capacity: data.capacity
-              };
-            }
-            return c;
-          }));
         } else {
-          const { data, error } = await supabase.from('classes').insert(classToSave).select().single();
+          const { error } = await supabase.from('classes').insert(classToSave);
           if (error) throw new Error(error.message);
-          
-          const teacher = teachers.find(t => t.id === data.teacher_id);
-          const newClass: SchoolClass = { 
-            ...data, 
-            name: `Class ${data.name}`, 
-            studentCount: 0, 
-            averageGpa: 0, 
-            subjects: [], 
-            teacher: { id: teacher?.id || data.teacher_id || '', name: teacher?.name || 'Unassigned' } 
-          };
-          setClasses(prev => [newClass, ...prev]);
         }
+        // Refresh data to show new subjects
+        window.location.reload(); 
       })(),
       {
         loading: 'Saving class...',

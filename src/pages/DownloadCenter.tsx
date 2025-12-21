@@ -25,11 +25,17 @@ const DownloadCenter: React.FC = () => {
 
   useEffect(() => {
     fetchContents();
-  }, []);
+  }, [profile]);
 
   const fetchContents = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
-    const { data, error } = await supabase.from('contents').select('*').order('upload_date', { ascending: false });
+    const { data, error } = await supabase
+      .from('contents')
+      .select('*')
+      .eq('school_id', profile.school_id)
+      .order('upload_date', { ascending: false });
+      
     if (error) toast.error('Failed to load contents');
     else setContents(data || []);
     setLoading(false);
@@ -47,14 +53,18 @@ const DownloadCenter: React.FC = () => {
       let fileUrl = formData.file_url;
       if (file) {
         const fileExt = file.name.split('.').pop();
-        const filePath = `downloads/${Date.now()}.${fileExt}`;
-        const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file); // Reusing avatars bucket for demo
+        const filePath = `downloads/${profile?.school_id}/${Date.now()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file);
         if (uploadError) throw uploadError;
-        const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+        const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
         fileUrl = data.publicUrl;
       }
 
-      const { error } = await supabase.from('contents').insert({ ...formData, file_url: fileUrl });
+      const { error } = await supabase.from('contents').insert({ 
+          ...formData, 
+          file_url: fileUrl,
+          school_id: profile?.school_id 
+      });
       if (error) throw error;
       
       toast.success('Content uploaded');

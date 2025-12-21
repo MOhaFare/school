@@ -14,7 +14,7 @@ const StudentTranscript: React.FC = () => {
   const { schoolName, academicYear } = useGlobal();
   const [students, setStudents] = useState<Student[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
-  const [grades, setGrades] = useState<(Grade & { examName: string; total_marks: number })[]>([]);
+  const [grades, setGrades] = useState<(Grade & { examName: string; total_marks: number; semester: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingGrades, setLoadingGrades] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -65,7 +65,7 @@ const StudentTranscript: React.FC = () => {
           .from('grades')
           .select(`
             *,
-            exams ( name, total_marks )
+            exams ( name, total_marks, semester )
           `)
           .eq('student_id', selectedStudentId)
           .order('date', { ascending: true });
@@ -81,11 +81,12 @@ const StudentTranscript: React.FC = () => {
           grade: g.grade,
           gpa: g.gpa,
           date: g.date,
-          subject: g.subject || 'Unknown', // Fallback if subject stored in grade row
+          subject: g.subject || 'Unknown',
           examName: g.exams?.name || 'Unknown Exam',
           total_marks: g.exams?.total_marks || 100,
-          studentName: '', // Not needed for this view
-          examNameRaw: g.exams?.name // Helper
+          semester: g.exams?.semester || 'First Semester',
+          studentName: '',
+          examNameRaw: g.exams?.name
         }));
 
         setGrades(formattedGrades);
@@ -102,6 +103,12 @@ const StudentTranscript: React.FC = () => {
   const handlePrint = useReactToPrint({
     content: () => componentRef.current,
     documentTitle: `Transcript-${selectedStudentId}`,
+    onBeforeGetContent: () => {
+      if (!componentRef.current) {
+        toast.error("Content not ready for printing");
+        return Promise.reject();
+      }
+    }
   });
 
   const filteredStudents = students.filter(s => 
@@ -111,14 +118,29 @@ const StudentTranscript: React.FC = () => {
 
   const selectedStudent = students.find(s => s.id === selectedStudentId);
 
-  // Group grades by Exam Name
+  // Group grades by Semester -> Exam Name
   const groupedGrades = useMemo(() => {
-    const groups: Record<string, typeof grades> = {};
+    const groups: Record<string, Record<string, typeof grades>> = {};
+    
+    // Sort semesters logically
+    const semesterOrder = ['First Semester', 'Second Semester', 'Summer Semester'];
+    
+    grades.sort((a, b) => {
+        const idxA = semesterOrder.indexOf(a.semester);
+        const idxB = semesterOrder.indexOf(b.semester);
+        if (idxA !== idxB) return idxA - idxB;
+        return 0;
+    });
+
     grades.forEach(grade => {
-      if (!groups[grade.examName]) {
-        groups[grade.examName] = [];
+      const sem = grade.semester;
+      if (!groups[sem]) {
+        groups[sem] = {};
       }
-      groups[grade.examName].push(grade);
+      if (!groups[sem][grade.examName]) {
+        groups[sem][grade.examName] = [];
+      }
+      groups[sem][grade.examName].push(grade);
     });
     return groups;
   }, [grades]);

@@ -7,6 +7,7 @@ import { Label } from '../../components/ui/Label';
 import Logo from '../../components/ui/Logo';
 import { useGlobal } from '../../context/GlobalContext';
 import { Lock, Mail, ArrowRight, AlertCircle, WifiOff } from 'lucide-react';
+import { logUserLogin } from '../../services/logger';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -48,10 +49,15 @@ const Login: React.FC = () => {
       }
       
       if (data.session) {
-        // Successful login
+        // Fetch profile for logging
+        const { data: profile } = await supabase.from('profiles').select('name, role, school_id').eq('id', data.user.id).single();
+        
+        if (profile) {
+            await logUserLogin(data.user.id, profile.name, profile.role, 'Success', profile.school_id);
+        }
+        
         navigate('/');
       } else {
-        // Should not happen if error is null, but just in case
         setError('Login failed. Please check your credentials.');
       }
     } catch (err: any) {

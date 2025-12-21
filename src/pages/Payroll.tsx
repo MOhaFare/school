@@ -30,7 +30,7 @@ const transformPayrollToCamelCase = (dbPayroll: any): PayrollType => ({
 });
 
 const Payroll: React.FC = () => {
-  const { schoolName, schoolAddress, schoolLogo } = useGlobal();
+  const { schoolName, schoolAddress, schoolLogo, profile } = useGlobal();
   const [payrolls, setPayrolls] = useState<PayrollType[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,18 +49,33 @@ const Payroll: React.FC = () => {
   const handlePrintPayslip = useReactToPrint({
     content: () => payslipRef.current,
     documentTitle: `Payslip-${selectedPayroll?.id}`,
+    onBeforeGetContent: () => {
+      if (!payslipRef.current) {
+        toast.error("Content not ready for printing");
+        return Promise.reject();
+      }
+    }
   });
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile) return;
       setLoading(true);
       try {
+        let payrollsQuery = supabase.from('payrolls').select('*').order('year', { ascending: false }).order('month', { ascending: false });
+        let teachersQuery = supabase.from('teachers').select('id, name, salary, subject, join_date');
+
+        if (profile.role !== 'system_admin' && profile.school_id) {
+          payrollsQuery = payrollsQuery.eq('school_id', profile.school_id);
+          teachersQuery = teachersQuery.eq('school_id', profile.school_id);
+        }
+
         const [
           { data: payrollsData, error: payrollsError },
           { data: teachersData, error: teachersError }
         ] = await Promise.all([
-          supabase.from('payrolls').select('*').order('year', { ascending: false }).order('month', { ascending: false }),
-          supabase.from('teachers').select('id, name, salary, subject, join_date')
+          payrollsQuery,
+          teachersQuery
         ]);
 
         if (payrollsError) throw payrollsError;
@@ -69,7 +84,7 @@ const Payroll: React.FC = () => {
         setPayrolls((payrollsData || []).map(transformPayrollToCamelCase));
         setTeachers(teachersData.map((t: any) => ({
             ...t,
-            joinDate: t.join_date // Map join_date to joinDate for local use
+            joinDate: t.join_date 
         })) || []);
       } catch (error: any) {
         const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
@@ -79,7 +94,7 @@ const Payroll: React.FC = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [profile]);
 
   const enrichedPayrolls = useMemo(() => {
     return payrolls.map(p => ({
@@ -124,17 +139,23 @@ const Payroll: React.FC = () => {
       (async () => {
         const teacher = teachers.find(t => t.id === formData.teacherId);
         if (!teacher) throw new Error("Selected teacher not found.");
+        
+        // Ensure salary is a number
+        const baseSalary = Number(teacher.salary) || 0;
+        const bonus = Number(formData.bonus) || 0;
+        const deductions = Number(formData.deductions) || 0;
 
         const payrollToSave = {
           teacher_id: formData.teacherId,
           month: formData.month,
           year: formData.year,
-          bonus: formData.bonus,
-          deductions: formData.deductions,
+          bonus: bonus,
+          deductions: deductions,
           status: formData.status,
           paid_date: formData.status === 'paid' ? formData.paidDate || new Date().toISOString().split('T')[0] : null,
-          base_salary: teacher.salary,
-          net_salary: teacher.salary + formData.bonus - formData.deductions,
+          base_salary: baseSalary,
+          net_salary: baseSalary + bonus - deductions,
+          school_id: profile?.school_id
         };
 
         if (formData.id) {
@@ -187,6 +208,7 @@ const Payroll: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* ... (JSX remains similar) */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">Payroll Management</h1>

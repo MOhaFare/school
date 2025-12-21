@@ -7,6 +7,7 @@ import Modal from '../components/ui/Modal';
 import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useGlobal } from '../context/GlobalContext';
 
 interface SubjectGroup {
   id: string;
@@ -16,6 +17,7 @@ interface SubjectGroup {
 }
 
 const SubjectGroups: React.FC = () => {
+  const { profile } = useGlobal();
   const [groups, setGroups] = useState<SubjectGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setModalOpen] = useState(false);
@@ -24,11 +26,17 @@ const SubjectGroups: React.FC = () => {
 
   useEffect(() => {
     fetchGroups();
-  }, []);
+  }, [profile]);
 
   const fetchGroups = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
-    const { data, error } = await supabase.from('subject_groups').select('*').order('name');
+    const { data, error } = await supabase
+      .from('subject_groups')
+      .select('*')
+      .eq('school_id', profile.school_id)
+      .order('name');
+      
     if (error) toast.error('Failed to load subject groups');
     else setGroups(data || []);
     setLoading(false);
@@ -49,7 +57,8 @@ const SubjectGroups: React.FC = () => {
     const payload = {
       name: formData.name,
       description: formData.description,
-      subjects: subjectsArray
+      subjects: subjectsArray,
+      school_id: profile?.school_id
     };
 
     try {

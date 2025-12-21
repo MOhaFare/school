@@ -11,6 +11,7 @@ import TableSkeleton from '../components/ui/TableSkeleton';
 import { formatDate } from '../utils/format';
 import Badge from '../components/ui/Badge';
 import EmptyState from '../components/ui/EmptyState';
+import { useGlobal } from '../context/GlobalContext';
 
 interface InventoryIssueRecord {
   id: string;
@@ -24,6 +25,7 @@ interface InventoryIssueRecord {
 }
 
 const InventoryIssue: React.FC = () => {
+  const { profile } = useGlobal();
   const [issues, setIssues] = useState<InventoryIssueRecord[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,14 +42,15 @@ const InventoryIssue: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [profile]);
 
   const fetchData = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
     try {
       const [issuesRes, itemsRes] = await Promise.all([
-        supabase.from('inventory_issues').select('*, inventory_items(name)').order('issue_date', { ascending: false }),
-        supabase.from('inventory_items').select('id, name, quantity').gt('quantity', 0)
+        supabase.from('inventory_issues').select('*, inventory_items(name)').eq('school_id', profile.school_id).order('issue_date', { ascending: false }),
+        supabase.from('inventory_items').select('id, name, quantity').eq('school_id', profile.school_id).gt('quantity', 0)
       ]);
 
       if (issuesRes.error) throw issuesRes.error;
@@ -91,8 +94,9 @@ const InventoryIssue: React.FC = () => {
 
   const handleSave = async () => {
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
       if (selectedIssue) {
-        const { error } = await supabase.from('inventory_issues').update(formData).eq('id', selectedIssue.id);
+        const { error } = await supabase.from('inventory_issues').update(payload).eq('id', selectedIssue.id);
         if (error) throw error;
       } else {
         // Check stock
@@ -102,7 +106,7 @@ const InventoryIssue: React.FC = () => {
           return;
         }
 
-        const { error } = await supabase.from('inventory_issues').insert(formData);
+        const { error } = await supabase.from('inventory_issues').insert(payload);
         if (error) throw error;
 
         // Update stock

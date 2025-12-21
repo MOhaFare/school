@@ -9,6 +9,7 @@ import Modal from '../components/ui/Modal';
 import { Label } from '../components/ui/Label';
 import { Select } from '../components/ui/Select';
 import { Input } from '../components/ui/Input';
+import { useGlobal } from '../context/GlobalContext';
 
 interface IssueRecord {
   id: string;
@@ -23,6 +24,7 @@ interface IssueRecord {
 }
 
 const LibraryIssue: React.FC = () => {
+  const { profile } = useGlobal();
   const [issues, setIssues] = useState<IssueRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -41,9 +43,10 @@ const LibraryIssue: React.FC = () => {
   useEffect(() => {
     fetchIssues();
     fetchOptions();
-  }, []);
+  }, [profile]);
 
   const fetchIssues = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
     const { data, error } = await supabase
       .from('library_issues')
@@ -52,6 +55,7 @@ const LibraryIssue: React.FC = () => {
         library_books(title),
         students(name)
       `)
+      .eq('school_id', profile.school_id)
       .order('issue_date', { ascending: false });
 
     if (error) toast.error('Failed to load records');
@@ -72,8 +76,9 @@ const LibraryIssue: React.FC = () => {
   };
 
   const fetchOptions = async () => {
-    const { data: booksData } = await supabase.from('library_books').select('id, title').eq('status', 'available');
-    const { data: studentsData } = await supabase.from('students').select('id, name');
+    if (!profile?.school_id) return;
+    const { data: booksData } = await supabase.from('library_books').select('id, title').eq('school_id', profile.school_id).eq('status', 'available');
+    const { data: studentsData } = await supabase.from('students').select('id, name').eq('school_id', profile.school_id);
     if (booksData) setBooks(booksData);
     if (studentsData) setStudents(studentsData);
   };
@@ -101,6 +106,7 @@ const LibraryIssue: React.FC = () => {
 
   const handleSave = async () => {
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
       if (selectedIssue) {
         const { error } = await supabase.from('library_issues').update({
           issue_date: formData.issue_date,
@@ -109,7 +115,7 @@ const LibraryIssue: React.FC = () => {
         if (error) throw error;
         toast.success('Record updated');
       } else {
-        const { error } = await supabase.from('library_issues').insert(formData);
+        const { error } = await supabase.from('library_issues').insert(payload);
         if (error) throw error;
         // Update book availability
         await supabase.rpc('decrement_book_count', { book_id: formData.book_id });

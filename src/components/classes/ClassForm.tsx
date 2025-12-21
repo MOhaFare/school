@@ -9,7 +9,7 @@ import { supabase } from '../../lib/supabaseClient';
 interface ClassFormProps {
   schoolClass?: Omit<SchoolClass, 'studentCount' | 'averageGpa' | 'subjects'> | null;
   teachers: Teacher[];
-  onSubmit: (data: { name: string; teacher_id: string; capacity: number; id?: string; school_id?: string }) => void;
+  onSubmit: (data: { name: string; teacher_id: string; capacity: number; id?: string; school_id?: string; subject_group_id?: string }) => void;
 }
 
 // Updated grades list: KG1 to 12
@@ -24,32 +24,41 @@ const ClassForm = forwardRef<HTMLFormElement, ClassFormProps>(({ schoolClass, te
   const [teacherId, setTeacherId] = useState(teachers[0]?.id || '');
   const [capacity, setCapacity] = useState(30);
   const [schoolId, setSchoolId] = useState<string | undefined>(profile?.school_id);
+  const [subjectGroupId, setSubjectGroupId] = useState('');
   
-  // State for dynamic sections
+  // State for dynamic data
   const [availableSections, setAvailableSections] = useState<string[]>([]);
+  const [subjectGroups, setSubjectGroups] = useState<{id: string, name: string}[]>([]);
 
-  // Fetch sections from DB
+  // Fetch sections and subject groups
   useEffect(() => {
-    const fetchSections = async () => {
-      const { data } = await supabase.from('sections').select('name').order('name');
-      if (data && data.length > 0) {
-        const sections = data.map(s => s.name);
+    const fetchData = async () => {
+      if (!profile?.school_id) return;
+      
+      const [sectionsRes, groupsRes] = await Promise.all([
+        supabase.from('sections').select('name').eq('school_id', profile.school_id).order('name'),
+        supabase.from('subject_groups').select('id, name').eq('school_id', profile.school_id).order('name')
+      ]);
+
+      if (sectionsRes.data && sectionsRes.data.length > 0) {
+        const sections = sectionsRes.data.map(s => s.name);
         setAvailableSections(sections);
-        // Set default section if not editing
         if (!schoolClass) setSection(sections[0]);
       } else {
-        // Fallback if no sections defined
         setAvailableSections(['A', 'B', 'C']);
         if (!schoolClass) setSection('A');
       }
+
+      if (groupsRes.data) {
+        setSubjectGroups(groupsRes.data);
+      }
     };
-    fetchSections();
-  }, [schoolClass]);
+    fetchData();
+  }, [schoolClass, profile]);
 
   // Initialize form data when editing
   useEffect(() => {
     if (schoolClass) {
-      // Parse "10-A" from "Class 10-A"
       const rawName = schoolClass.name.replace('Class ', '');
       const parts = rawName.split('-');
       
@@ -57,18 +66,15 @@ const ClassForm = forwardRef<HTMLFormElement, ClassFormProps>(({ schoolClass, te
         setGrade(parts[0]);
         setSection(parts[1]);
       } else {
-        // Fallback if format doesn't match
         setGrade(grades[0]);
-        // Keep existing section logic or default
       }
 
       setTeacherId(schoolClass.teacher.id);
       setCapacity(schoolClass.capacity || 30);
       setSchoolId((schoolClass as any).school_id || profile?.school_id);
+      setSubjectGroupId((schoolClass as any).subject_group_id || '');
     } else {
-      // Defaults for new class
       setGrade(grades[0]);
-      // Section is set in fetchSections
       setTeacherId(teachers[0]?.id || '');
       setCapacity(30);
       setSchoolId(profile?.school_id);
@@ -77,7 +83,6 @@ const ClassForm = forwardRef<HTMLFormElement, ClassFormProps>(({ schoolClass, te
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Combine Grade and Section to form the Name (e.g., "10-A")
     const className = `${grade}-${section}`;
     
     onSubmit({ 
@@ -85,7 +90,8 @@ const ClassForm = forwardRef<HTMLFormElement, ClassFormProps>(({ schoolClass, te
       teacher_id: teacherId,
       capacity,
       id: schoolClass?.id,
-      school_id: schoolId
+      school_id: schoolId,
+      subject_group_id: subjectGroupId || undefined
     });
   };
 
@@ -151,6 +157,23 @@ const ClassForm = forwardRef<HTMLFormElement, ClassFormProps>(({ schoolClass, te
             required 
           />
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="subject_group">Assign Subject Group</Label>
+        <Select 
+            id="subject_group" 
+            value={subjectGroupId} 
+            onChange={(e) => setSubjectGroupId(e.target.value)}
+        >
+            <option value="">-- No Subjects Assigned --</option>
+            {subjectGroups.map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+        </Select>
+        <p className="text-xs text-gray-500">
+            Assign a subject group to define what subjects are taught in this class.
+        </p>
       </div>
 
       <div className="p-3 bg-blue-50 rounded-md border border-blue-100">

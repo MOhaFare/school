@@ -58,6 +58,7 @@ import LessonPlan from './pages/LessonPlan';
 import OnlineExam from './pages/OnlineExam';
 import Alumni from './pages/Alumni';
 import LiveClasses from './pages/LiveClasses';
+import Profile from './pages/Profile'; // Import Profile
 import { GlobalProvider, useGlobal } from './context/GlobalContext';
 import Login from './pages/auth/Login';
 import ForgotPassword from './pages/auth/ForgotPassword';
@@ -102,6 +103,9 @@ const AppRoutes: React.FC = () => {
             {/* Dashboard - Accessible by all authenticated users (Role specific view handled inside) */}
             <Route index element={<Dashboard />} />
             
+            {/* Profile Page - Accessible by all */}
+            <Route path="profile" element={<ProtectedRoute allowedRoles={ALL_ROLES}><Profile /></ProtectedRoute>} />
+
             {/* System Admin Only */}
             <Route path="super-admin" element={<ProtectedRoute allowedRoles={['system_admin']}><SuperAdminDashboard /></ProtectedRoute>} />
             <Route path="schools" element={<ProtectedRoute allowedRoles={['system_admin']}><Schools /></ProtectedRoute>} />

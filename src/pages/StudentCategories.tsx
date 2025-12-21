@@ -7,6 +7,7 @@ import Modal from '../components/ui/Modal';
 import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useGlobal } from '../context/GlobalContext';
 
 interface Category {
   id: string;
@@ -14,6 +15,7 @@ interface Category {
 }
 
 const StudentCategories: React.FC = () => {
+  const { profile } = useGlobal();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setModalOpen] = useState(false);
@@ -23,11 +25,17 @@ const StudentCategories: React.FC = () => {
 
   useEffect(() => {
     fetchCategories();
-  }, []);
+  }, [profile]);
 
   const fetchCategories = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
-    const { data, error } = await supabase.from('student_categories').select('*').order('name');
+    const { data, error } = await supabase
+      .from('student_categories')
+      .select('*')
+      .eq('school_id', profile.school_id)
+      .order('name');
+      
     if (error) toast.error('Failed to load categories');
     else setCategories(data || []);
     setLoading(false);
@@ -43,11 +51,13 @@ const StudentCategories: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const payload = { name: categoryName, school_id: profile?.school_id };
+      
       if (selectedCategory) {
         const { error } = await supabase.from('student_categories').update({ name: categoryName }).eq('id', selectedCategory.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('student_categories').insert({ name: categoryName });
+        const { error } = await supabase.from('student_categories').insert(payload);
         if (error) throw error;
       }
       toast.success('Category saved successfully');

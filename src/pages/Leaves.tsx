@@ -9,6 +9,7 @@ import Modal from '../components/ui/Modal';
 import { Label } from '../components/ui/Label';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
+import { useGlobal } from '../context/GlobalContext';
 
 interface LeaveRequest {
   id: string;
@@ -22,6 +23,7 @@ interface LeaveRequest {
 }
 
 const Leaves: React.FC = () => {
+  const { profile } = useGlobal();
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -34,13 +36,15 @@ const Leaves: React.FC = () => {
   useEffect(() => {
     fetchLeaves();
     fetchTeachers();
-  }, []);
+  }, [profile]);
 
   const fetchLeaves = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
     const { data, error } = await supabase
       .from('leaves')
       .select('*, teachers(name)')
+      .eq('school_id', profile.school_id)
       .order('created_at', { ascending: false });
     
     if (error) toast.error('Failed to load leaves');
@@ -60,7 +64,8 @@ const Leaves: React.FC = () => {
   };
 
   const fetchTeachers = async () => {
-    const { data } = await supabase.from('teachers').select('id, name');
+    if (!profile?.school_id) return;
+    const { data } = await supabase.from('teachers').select('id, name').eq('school_id', profile.school_id);
     if (data) setTeachers(data);
   };
 
@@ -98,12 +103,14 @@ const Leaves: React.FC = () => {
 
   const handleSave = async () => {
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
+      
       if (selectedLeave) {
-        const { error } = await supabase.from('leaves').update(formData).eq('id', selectedLeave.id);
+        const { error } = await supabase.from('leaves').update(payload).eq('id', selectedLeave.id);
         if (error) throw error;
         toast.success('Leave updated');
       } else {
-        const { error } = await supabase.from('leaves').insert({ ...formData, status: 'pending' });
+        const { error } = await supabase.from('leaves').insert({ ...payload, status: 'pending' });
         if (error) throw error;
         toast.success('Leave applied');
       }

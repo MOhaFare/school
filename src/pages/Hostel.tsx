@@ -7,6 +7,7 @@ import HostelRoomForm from '../components/hostel/HostelRoomForm';
 import CardGridSkeleton from '../components/ui/CardGridSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useGlobal } from '../context/GlobalContext';
 
 const transformRoomToCamelCase = (dbRoom: any): HostelRoom => ({
   id: dbRoom.id,
@@ -19,6 +20,7 @@ const transformRoomToCamelCase = (dbRoom: any): HostelRoom => ({
 });
 
 const Hostel: React.FC = () => {
+  const { profile } = useGlobal();
   const [hostelRooms, setHostelRooms] = useState<HostelRoom[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,14 +34,15 @@ const Hostel: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
       try {
         const [
           { data: roomsData, error: roomsError },
           { data: studentsData, error: studentsError }
         ] = await Promise.all([
-          supabase.from('hostel_rooms').select('*').order('room_number'),
-          supabase.from('students').select('id, name')
+          supabase.from('hostel_rooms').select('*').eq('school_id', profile.school_id).order('room_number'),
+          supabase.from('students').select('id, name').eq('school_id', profile.school_id)
         ]);
 
         if (roomsError) throw roomsError;
@@ -50,13 +53,12 @@ const Hostel: React.FC = () => {
       } catch (error: any) {
         const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
         toast.error(`Failed to load data: ${errorMessage}`);
-        console.error("Error fetching hostel data:", error);
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, []);
+  }, [profile]);
 
   const filteredRooms = hostelRooms.filter(room =>
     room.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -86,6 +88,7 @@ const Hostel: React.FC = () => {
       capacity: formData.capacity,
       occupants: formData.occupants,
       status: formData.status,
+      school_id: profile?.school_id
     };
     await toast.promise(
       (async () => {

@@ -102,6 +102,12 @@ const AdmitCardDesign: React.FC = () => {
   const handlePrint = useReactToPrint({
     content: () => printRef.current,
     documentTitle: 'Admit Cards',
+    onBeforeGetContent: () => {
+      if (!printRef.current) {
+        toast.error("Content not ready for printing");
+        return Promise.reject();
+      }
+    }
   });
 
   const selectedExam = exams.find(e => e.id === selectedExamId);

@@ -3,15 +3,21 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { supabase } from '../../lib/supabaseClient';
 import { Skeleton } from '../ui/Skeleton';
 import { formatCurrency } from '../../utils/format';
+import { useGlobal } from '../../context/GlobalContext';
 
 const InventoryReport: React.FC = () => {
+  const { profile } = useGlobal();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
-      const { data: items } = await supabase.from('inventory_items').select('category, quantity, unit_price');
+      const { data: items } = await supabase
+        .from('inventory_items')
+        .select('category, quantity, unit_price')
+        .eq('school_id', profile.school_id);
       
       if (items) {
         const categoryStats: any = {};
@@ -26,7 +32,7 @@ const InventoryReport: React.FC = () => {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [profile]);
 
   if (loading) return <Skeleton className="h-96 w-full" />;
 

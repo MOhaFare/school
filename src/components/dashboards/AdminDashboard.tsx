@@ -138,69 +138,46 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       // Wait for profile to load to ensure we have the school_id
-      if (!profile) return;
+      if (!profile || !profile.school_id) return;
 
       setLoading(true);
       try {
-        // Construct queries with explicit school_id filtering
-        let studentQuery = supabase.from('students').select('*', { count: 'exact', head: true });
-        let teacherQuery = supabase.from('teachers').select('*', { count: 'exact', head: true });
-        let feesQuery = supabase.from('fees').select('amount').eq('status', 'paid');
-        let expensesQuery = supabase.from('expenses').select('amount');
-        let recentStudentsQuery = supabase.from('students').select('*').order('created_at', { ascending: false }).limit(5);
-        let gradesQuery = supabase.from('grades').select('created_at, marks_obtained, exams(total_marks)');
+        // 1. Fetch Stats via Optimized RPC (Fast)
+        const { data: statsData, error: statsError } = await supabase
+          .rpc('get_admin_dashboard_stats', { p_school_id: profile.school_id });
 
-        // Apply School ID filter if not System Admin
-        if (profile.role !== 'system_admin' && profile.school_id) {
-            const schoolId = profile.school_id;
-            studentQuery = studentQuery.eq('school_id', schoolId);
-            teacherQuery = teacherQuery.eq('school_id', schoolId);
-            feesQuery = feesQuery.eq('school_id', schoolId);
-            expensesQuery = expensesQuery.eq('school_id', schoolId);
-            recentStudentsQuery = recentStudentsQuery.eq('school_id', schoolId);
-            gradesQuery = gradesQuery.eq('school_id', schoolId);
+        if (statsError) {
+            console.error('Stats RPC failed, falling back:', statsError);
+            // Don't throw, allow the rest of the dashboard to load
+        } else if (statsData) {
+            setStats({
+              studentCount: statsData.studentCount || 0,
+              teacherCount: statsData.teacherCount || 0,
+              totalRevenue: statsData.totalRevenue || 0,
+              totalExpenses: statsData.totalExpenses || 0
+            });
         }
 
-        const [
-          studentResult,
-          teacherResult,
-          feesResult,
-          expensesResult,
-          recentStudentsResult,
-          gradesResult
-        ] = await Promise.all([
-          studentQuery,
-          teacherQuery,
-          feesQuery,
-          expensesQuery,
-          recentStudentsQuery,
-          gradesQuery
-        ]);
+        // 2. Fetch Recent Students (Limited to 5)
+        const { data: recentStudentsData, error: recentError } = await supabase
+          .from('students')
+          .select('*')
+          .eq('school_id', profile.school_id)
+          .order('created_at', { ascending: false })
+          .limit(5);
 
-        const results = { studentResult, teacherResult, feesResult, expensesResult, recentStudentsResult, gradesResult };
-        for (const [key, result] of Object.entries(results)) {
-          if (result.error) {
-            throw new Error(`Failed to fetch ${key.replace('Result', '')}: ${result.error.message}`);
-          }
-        }
-
-        const { count: studentCount } = studentResult;
-        const { count: teacherCount } = teacherResult;
-        const { data: feesData } = feesResult;
-        const { data: expensesData } = expensesResult;
-        const { data: recentStudentsData } = recentStudentsResult;
-        const { data: gradesData } = gradesResult;
-
-        const totalRevenue = feesData?.reduce((sum, item) => sum + item.amount, 0) || 0;
-        const totalExpenses = expensesData?.reduce((sum, item) => sum + item.amount, 0) || 0;
-        
-        setStats({
-          studentCount: studentCount || 0,
-          teacherCount: teacherCount || 0,
-          totalRevenue,
-          totalExpenses
-        });
+        if (recentError) throw recentError;
         setStudents(recentStudentsData || []);
+
+        // 3. Fetch Grades for Chart (Optimized select)
+        const { data: gradesData, error: gradesError } = await supabase
+          .from('grades')
+          .select('created_at, marks_obtained, exams(total_marks)')
+          .eq('school_id', profile.school_id)
+          .order('created_at', { ascending: true })
+          .limit(200); // Limit data points for chart
+
+        if (gradesError) throw gradesError;
 
         const monthlyPerformance: { [key: string]: { total: number; count: number } } = {};
         if (gradesData) {

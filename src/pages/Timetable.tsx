@@ -61,22 +61,36 @@ const Timetable: React.FC = () => {
 
   useEffect(() => {
     const fetchInitialData = async () => {
-      const { data: classesData } = await supabase.from('classes').select('id, name');
-      const { data: teachersData } = await supabase.from('teachers').select('id, name');
-      const { data: coursesData } = await supabase.from('courses').select('id, name');
+      if (!profile) return;
       
-      if (classesData) setClasses(classesData.map((c: any) => ({ ...c, name: `Class ${c.name}` })) as any);
-      if (teachersData) setTeachers(teachersData as any);
-      if (coursesData) setCourses(coursesData as any);
+      let classesQuery = supabase.from('classes').select('id, name');
+      let teachersQuery = supabase.from('teachers').select('id, name');
+      let coursesQuery = supabase.from('courses').select('id, name');
+
+      if (profile.role !== 'system_admin' && profile.school_id) {
+        classesQuery = classesQuery.eq('school_id', profile.school_id);
+        teachersQuery = teachersQuery.eq('school_id', profile.school_id);
+        coursesQuery = coursesQuery.eq('school_id', profile.school_id);
+      }
+
+      const [classesRes, teachersRes, coursesRes] = await Promise.all([
+        classesQuery,
+        teachersQuery,
+        coursesQuery
+      ]);
       
-      if (viewMode === 'class' && classesData && classesData.length > 0) {
-        setSelectedId(classesData[0].id);
-      } else if (viewMode === 'teacher' && teachersData && teachersData.length > 0) {
-        setSelectedId(teachersData[0].id);
+      if (classesRes.data) setClasses(classesRes.data.map((c: any) => ({ ...c, name: `Class ${c.name}` })) as any);
+      if (teachersRes.data) setTeachers(teachersRes.data as any);
+      if (coursesRes.data) setCourses(coursesRes.data as any);
+      
+      if (viewMode === 'class' && classesRes.data && classesRes.data.length > 0) {
+        setSelectedId(classesRes.data[0].id);
+      } else if (viewMode === 'teacher' && teachersRes.data && teachersRes.data.length > 0) {
+        setSelectedId(teachersRes.data[0].id);
       }
     };
     fetchInitialData();
-  }, [viewMode]);
+  }, [viewMode, profile]);
 
   useEffect(() => {
     if (selectedId) {
@@ -85,6 +99,7 @@ const Timetable: React.FC = () => {
   }, [selectedId, viewMode]);
 
   const fetchTimetable = async () => {
+    if (!profile) return;
     setLoading(true);
     let query = supabase
       .from('timetables')
@@ -94,6 +109,10 @@ const Timetable: React.FC = () => {
         teachers(name),
         classes(name)
       `);
+
+    if (profile.role !== 'system_admin' && profile.school_id) {
+        query = query.eq('school_id', profile.school_id);
+    }
 
     if (viewMode === 'class') {
       query = query.eq('class_id', selectedId);
@@ -153,6 +172,7 @@ const Timetable: React.FC = () => {
       ...formData,
       class_id: formData.class_id || (viewMode === 'class' ? selectedId : ''),
       teacher_id: formData.teacher_id || (viewMode === 'teacher' ? selectedId : ''),
+      school_id: profile?.school_id
     };
 
     if (!payload.class_id || !payload.teacher_id || !payload.subject_id) {
@@ -197,6 +217,7 @@ const Timetable: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* ... (JSX remains similar) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Timetable</h1>

@@ -1,5 +1,9 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+import forms from '@tailwindcss/forms';
+import scrollbar from 'tailwind-scrollbar';
+import animate from 'tailwindcss-animate';
+
+export default {
   darkMode: 'class', // Enable class-based dark mode
   content: [
     './src/**/*.{js,jsx,ts,tsx}',
@@ -49,7 +53,8 @@ module.exports = {
     },
   },
   plugins: [
-    require('@tailwindcss/forms'),
-    require('tailwind-scrollbar'),
+    forms,
+    scrollbar,
+    animate
   ],
 };

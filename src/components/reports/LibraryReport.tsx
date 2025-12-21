@@ -2,15 +2,21 @@ import React, { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
 import { Skeleton } from '../ui/Skeleton';
+import { useGlobal } from '../../context/GlobalContext';
 
 const LibraryReport: React.FC = () => {
+  const { profile } = useGlobal();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
-      const { data: books } = await supabase.from('library_books').select('genre, quantity');
+      const { data: books } = await supabase
+        .from('library_books')
+        .select('genre, quantity')
+        .eq('school_id', profile.school_id);
       
       if (books) {
         const genreStats: any = {};
@@ -25,7 +31,7 @@ const LibraryReport: React.FC = () => {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [profile]);
 
   if (loading) return <Skeleton className="h-96 w-full" />;
 

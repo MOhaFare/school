@@ -12,7 +12,7 @@ import { formatDate } from '../utils/format';
 import { useGlobal } from '../context/GlobalContext';
 
 const LiveClasses: React.FC = () => {
-  const { profile } = useGlobal();
+  const { profile, user } = useGlobal();
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,15 +33,26 @@ const LiveClasses: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [profile]);
 
   const fetchData = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
     setError(null);
     try {
+      let query = supabase.from('live_classes').select('*, teachers(name)').eq('school_id', profile.school_id).order('date', { ascending: false });
+
+      // If student, filter by class and section
+      if (profile?.role === 'student' && user) {
+          const { data: studentData } = await supabase.from('students').select('class, section').eq('user_id', user.id).eq('school_id', profile.school_id).single();
+          if (studentData) {
+              query = query.eq('class', studentData.class).eq('section', studentData.section);
+          }
+      }
+
       const [classesRes, teachersRes] = await Promise.all([
-        supabase.from('live_classes').select('*, teachers(name)').order('date', { ascending: false }),
-        supabase.from('teachers').select('id, name')
+        query,
+        supabase.from('teachers').select('id, name').eq('school_id', profile.school_id)
       ]);
 
       if (classesRes.error) throw classesRes.error;
@@ -56,7 +67,6 @@ const LiveClasses: React.FC = () => {
       }
     } catch (error: any) {
       console.error("Error fetching live classes:", error);
-      // Handle the specific "relation does not exist" or "table does not exist" error
       if (error.code === '42P01') {
           setError("The 'live_classes' table does not exist. Please ensure the database migration has been run.");
       } else {
@@ -71,7 +81,8 @@ const LiveClasses: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { error } = await supabase.from('live_classes').insert(formData);
+      const payload = { ...formData, school_id: profile?.school_id };
+      const { error } = await supabase.from('live_classes').insert(payload);
       if (error) throw error;
       toast.success('Class scheduled');
       setIsModalOpen(false);
@@ -151,7 +162,7 @@ const LiveClasses: React.FC = () => {
             </div>
           </div>
         ))}
-        {classes.length === 0 && <div className="col-span-full text-center py-12 text-slate-500">No live classes scheduled.</div>}
+        {classes.length === 0 && <div className="col-span-full text-center py-12 text-slate-500">No live classes scheduled for your class.</div>}
       </div>
 
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Schedule Live Class" footer={<><Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button><Button onClick={handleSave}>Schedule</Button></>}>

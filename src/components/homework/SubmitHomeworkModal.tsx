@@ -33,13 +33,13 @@ const SubmitHomeworkModal: React.FC<SubmitHomeworkModalProps> = ({ homeworkId, s
 
       if (file) {
         const fileExt = file.name.split('.').pop();
+        // Use the 'documents' bucket for homework files (supports PDF, DOCX, etc.)
         const filePath = `homework/${homeworkId}/${studentId}-${Date.now()}.${fileExt}`;
-        // Using 'avatars' bucket for demo simplicity, ideally use a 'documents' bucket
-        const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file);
+        const { error: uploadError } = await supabase.storage.from('documents').upload(filePath, file);
         
         if (uploadError) throw uploadError;
         
-        const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+        const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
         fileUrl = data.publicUrl;
       }
 

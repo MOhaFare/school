@@ -66,18 +66,29 @@ const IdCards: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'students' | 'teachers'>('students');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
-  const { schoolName, schoolLogo } = useGlobal();
+  const { schoolName, schoolLogo, profile } = useGlobal();
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile) return;
+
       setLoading(true);
       try {
+        let studentsQuery = supabase.from('students').select('*');
+        let teachersQuery = supabase.from('teachers').select('*');
+
+        // Filter by school_id if not system admin
+        if (profile.role !== 'system_admin' && profile.school_id) {
+            studentsQuery = studentsQuery.eq('school_id', profile.school_id);
+            teachersQuery = teachersQuery.eq('school_id', profile.school_id);
+        }
+
         const [
           { data: studentsData, error: studentsError },
           { data: teachersData, error: teachersError }
         ] = await Promise.all([
-          supabase.from('students').select('*'),
-          supabase.from('teachers').select('*')
+          studentsQuery,
+          teachersQuery
         ]);
 
         if (studentsError) throw studentsError;
@@ -89,7 +100,9 @@ const IdCards: React.FC = () => {
         setStudents(transformedStudents);
         setTeachers(transformedTeachers);
         
-        setSelectedPerson(transformedStudents[0] || null);
+        // Select first person based on active tab
+        const initialList = activeTab === 'students' ? transformedStudents : transformedTeachers;
+        setSelectedPerson(initialList[0] || null);
         
       } catch (error: any) {
         const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
@@ -100,7 +113,7 @@ const IdCards: React.FC = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [profile, activeTab]); // Re-fetch if profile or tab logic needs refresh (though tab switching is handled locally)
 
   const listData = activeTab === 'students' ? students : teachers;
   const filteredData = listData.filter(person =>
@@ -114,12 +127,24 @@ const IdCards: React.FC = () => {
   const handlePrint = useReactToPrint({
     content: () => componentRef.current,
     documentTitle: `${selectedPerson?.name}-ID-Card` || 'ID-Card',
+    onBeforeGetContent: () => {
+      if (!componentRef.current) {
+        toast.error("Content not ready for printing");
+        return Promise.reject();
+      }
+    }
   });
 
   const handlePrintAll = useReactToPrint({
     content: () => printAllRef.current,
     documentTitle: `${activeTab}-ID-Cards-All`,
-    pageStyle: `@page { size: A4 portrait; margin: 1cm; }`
+    pageStyle: `@page { size: A4 portrait; margin: 1cm; }`,
+    onBeforeGetContent: () => {
+      if (!printAllRef.current) {
+        toast.error("Content not ready for printing");
+        return Promise.reject();
+      }
+    }
   });
 
   const handleSelectPerson = (person: Person) => {
@@ -138,27 +163,27 @@ const IdCards: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-primary">ID Card Generator</h1>
-        <p className="text-muted-foreground mt-1">Create and print ID cards for students and teachers.</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">ID Card Generator</h1>
+        <p className="text-slate-500 mt-1">Create and print ID cards for students and teachers.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-12rem)]">
-        <div className="lg:col-span-1 bg-white rounded-lg shadow-sm border border-border flex flex-col">
-          <div className="p-4 border-b border-border">
-            <div className="flex border-b border-border">
-              <button onClick={() => handleTabChange('students')} className={`flex-1 py-2.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${activeTab === 'students' ? 'border-b-2 border-orange-600 text-orange-700' : 'text-muted-foreground hover:text-orange-600'}`}>
+        <div className="lg:col-span-1 bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col">
+          <div className="p-4 border-b border-slate-200">
+            <div className="flex border-b border-slate-200">
+              <button onClick={() => handleTabChange('students')} className={`flex-1 py-2.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${activeTab === 'students' ? 'border-b-2 border-orange-600 text-orange-700' : 'text-slate-500 hover:text-orange-600'}`}>
                 <Users size={16} /> Students
               </button>
-              <button onClick={() => handleTabChange('teachers')} className={`flex-1 py-2.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${activeTab === 'teachers' ? 'border-b-2 border-teal-600 text-teal-700' : 'text-muted-foreground hover:text-teal-600'}`}>
+              <button onClick={() => handleTabChange('teachers')} className={`flex-1 py-2.5 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${activeTab === 'teachers' ? 'border-b-2 border-teal-600 text-teal-700' : 'text-slate-500 hover:text-teal-600'}`}>
                 <User size={16} /> Teachers
               </button>
             </div>
             <div className="relative mt-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-              <input type="text" placeholder={`Search ${activeTab}...`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full pl-10 pr-4 py-2 border bg-secondary border-border rounded-lg focus:ring-2 focus:border-transparent outline-none text-sm ${themeColor === 'orange' ? 'focus:ring-orange-500' : 'focus:ring-teal-500'}`} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+              <input type="text" placeholder={`Search ${activeTab}...`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className={`w-full pl-10 pr-4 py-2 border bg-slate-50 border-slate-200 rounded-lg focus:ring-2 focus:border-transparent outline-none text-sm ${themeColor === 'orange' ? 'focus:ring-orange-500' : 'focus:ring-teal-500'}`} />
             </div>
           </div>
-          <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200">
+          <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
             {loading ? (
               <div className="p-4 space-y-2">
                 {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
@@ -166,20 +191,20 @@ const IdCards: React.FC = () => {
             ) : (
               <>
                 {filteredData.map(person => (
-                  <div key={person.id} onClick={() => handleSelectPerson(person)} className={`flex items-center p-4 cursor-pointer border-l-4 transition-colors ${selectedPerson?.id === person.id ? (themeColor === 'orange' ? 'bg-orange-50 border-orange-600' : 'bg-teal-50 border-teal-600') : 'border-transparent hover:bg-gray-50'}`}>
-                    <div className={`h-10 w-10 rounded-full flex items-center justify-center text-white font-bold uppercase transition-colors overflow-hidden ${selectedPerson?.id === person.id ? (themeColor === 'orange' ? 'bg-orange-600' : 'bg-teal-600') : 'bg-gray-400'}`}>
+                  <div key={person.id} onClick={() => handleSelectPerson(person)} className={`flex items-center p-4 cursor-pointer border-l-4 transition-colors ${selectedPerson?.id === person.id ? (themeColor === 'orange' ? 'bg-orange-50 border-orange-600' : 'bg-teal-50 border-teal-600') : 'border-transparent hover:bg-slate-50'}`}>
+                    <div className={`h-10 w-10 rounded-full flex items-center justify-center text-white font-bold uppercase transition-colors overflow-hidden ${selectedPerson?.id === person.id ? (themeColor === 'orange' ? 'bg-orange-600' : 'bg-teal-600') : 'bg-slate-400'}`}>
                       {person.avatar ? <img src={person.avatar} alt={person.name} className="w-full h-full object-cover"/> : person.name.charAt(0)}
                     </div>
-                    <div className="ml-3"><p className="font-medium text-primary">{person.name}</p><p className="text-sm text-muted-foreground">{person.id}</p></div>
+                    <div className="ml-3"><p className="font-medium text-slate-900">{person.name}</p><p className="text-sm text-slate-500">{person.id}</p></div>
                   </div>
                 ))}
-                {filteredData.length === 0 && <div className="p-8 text-center text-muted-foreground"><p>No {activeTab} found.</p></div>}
+                {filteredData.length === 0 && <div className="p-8 text-center text-slate-500"><p>No {activeTab} found.</p></div>}
               </>
             )}
           </div>
         </div>
 
-        <div className="lg:col-span-2 bg-secondary rounded-lg flex flex-col items-center justify-center p-6">
+        <div className="lg:col-span-2 bg-slate-50 rounded-lg flex flex-col items-center justify-center p-6 border border-slate-200">
           {loading ? (
             <Skeleton className="w-[512px] h-[300px]" />
           ) : selectedPerson ? (
@@ -195,7 +220,7 @@ const IdCards: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="text-center text-muted-foreground"><Badge size={48} className="mx-auto mb-4" /><h3 className="text-lg font-medium text-primary">ID Card Preview</h3><p>No {activeTab} available to display.</p></div>
+            <div className="text-center text-slate-500"><Badge size={48} className="mx-auto mb-4" /><h3 className="text-lg font-medium text-slate-900">ID Card Preview</h3><p>No {activeTab} available to display.</p></div>
           )}
         </div>
       </div>

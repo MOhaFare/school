@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Plus, Calendar, Clock, BookOpen, Edit, Trash2, Eye, GraduationCap, Printer, FileText, FileBarChart } from 'lucide-react';
-import { Exam, Student, Grade } from '../types';
+import { Search, Plus, Calendar, Clock, BookOpen, Edit, Trash2, Eye, GraduationCap, Printer, FileText, FileBarChart, Layers } from 'lucide-react';
+import { Exam, Student } from '../types';
 import Modal from '../components/ui/Modal';
 import { Button } from '../components/ui/Button';
 import ExamForm from '../components/exams/ExamForm';
@@ -19,11 +19,13 @@ const transformExamToCamelCase = (dbExam: any): Exam => ({
   name: dbExam.name,
   subject: dbExam.subject,
   class: dbExam.class,
+  section: dbExam.section, // Added section
   date: dbExam.date,
   totalMarks: dbExam.total_marks,
   passingMarks: dbExam.passing_marks,
   duration: dbExam.duration,
   status: dbExam.status,
+  semester: dbExam.semester,
 });
 
 const transformStudentToCamelCase = (dbStudent: any): Student => ({
@@ -45,10 +47,13 @@ const transformStudentToCamelCase = (dbStudent: any): Student => ({
 });
 
 const Exams: React.FC = () => {
+  const { profile, schoolName, academicYear, user } = useGlobal();
   const [exams, setExams] = useState<Exam[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [activeSemester, setActiveSemester] = useState<string>('First Semester');
+  
   const [isModalOpen, setModalOpen] = useState(false);
   const [isViewModalOpen, setViewModalOpen] = useState(false);
   const [selectedExam, setSelectedExam] = useState<Exam | null>(null);
@@ -67,18 +72,49 @@ const Exams: React.FC = () => {
   const [loadingReports, setLoadingReports] = useState(false);
   const reportCardPrintRef = useRef<HTMLDivElement>(null);
 
-  const { schoolName, academicYear } = useGlobal();
-
   const navigate = useNavigate();
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     const fetchExams = async () => {
+      if (!profile) return;
       setLoading(true);
       try {
-        const { data, error } = await supabase.from('exams').select('*').order('date', { ascending: false });
+        let query = supabase.from('exams').select('*').order('date', { ascending: false });
+        
+        if (profile.role !== 'system_admin' && profile.school_id) {
+          query = query.eq('school_id', profile.school_id);
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
-        setExams(data.map(transformExamToCamelCase));
+        
+        let fetchedExams = data.map(transformExamToCamelCase);
+
+        // Client-side filtering for Students to enforce strict Class & Section visibility
+        if (profile.role === 'student' && user) {
+            const { data: studentData } = await supabase
+                .from('students')
+                .select('class, section')
+                .eq('user_id', user.id)
+                .eq('school_id', profile.school_id)
+                .single();
+            
+            if (studentData) {
+                fetchedExams = fetchedExams.filter(exam => {
+                    // Match class exactly
+                    if (exam.class !== studentData.class) return false;
+                    
+                    // Match section if exam has a specific section assigned.
+                    // If exam.section is null/empty, it applies to all sections of that class.
+                    if (exam.section && exam.section !== studentData.section) return false;
+                    
+                    return true;
+                });
+            }
+        }
+
+        setExams(fetchedExams);
       } catch (error: any) {
         const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
         toast.error(`Failed to fetch exams: ${errorMessage}`);
@@ -87,14 +123,15 @@ const Exams: React.FC = () => {
       }
     };
     fetchExams();
-  }, []);
+  }, [profile, user]);
 
   const filteredExams = exams.filter(exam => {
     const matchesSearch = exam.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       exam.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
       exam.class.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'all' || exam.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    const matchesSemester = exam.semester === activeSemester;
+    return matchesSearch && matchesStatus && matchesSemester;
   });
 
   const handleAdd = () => {
@@ -122,16 +159,25 @@ const Exams: React.FC = () => {
   };
 
   const handleGenerateAdmitCards = async (exam: Exam) => {
+    if (!profile?.school_id) return;
     setSelectedExam(exam);
     setIsAdmitCardModalOpen(true);
     setLoadingStudents(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('students')
         .select('*')
+        .eq('school_id', profile.school_id)
         .eq('class', exam.class)
         .eq('status', 'active')
         .order('name');
+      
+      // Filter by section if exam is section-specific
+      if (exam.section) {
+        query = query.eq('section', exam.section);
+      }
+
+      const { data, error } = await query;
       
       if (error) throw error;
       setExamStudents(data.map(transformStudentToCamelCase));
@@ -144,28 +190,36 @@ const Exams: React.FC = () => {
   };
 
   const handleGenerateReportCards = async (exam: Exam) => {
+    if (!profile?.school_id) return;
     setSelectedExam(exam);
     setIsReportCardModalOpen(true);
     setLoadingReports(true);
     try {
-      // 1. Fetch all students in the exam's class
-      const { data: studentsData, error: studentsError } = await supabase
+      // 1. Fetch all students in the exam's class (and section if applicable)
+      let studentQuery = supabase
         .from('students')
         .select('*')
+        .eq('school_id', profile.school_id)
         .eq('class', exam.class)
         .eq('status', 'active')
         .order('name');
       
+      if (exam.section) {
+        studentQuery = studentQuery.eq('section', exam.section);
+      }
+
+      const { data: studentsData, error: studentsError } = await studentQuery;
+      
       if (studentsError) throw studentsError;
 
-      // 2. Fetch all grades for this exam (by name match, assuming "Mid Term" covers all subjects)
-      // We need to find all exams with the same NAME and CLASS (e.g. "Mid Term" for "Class 10") 
-      // but different subjects.
+      // 2. Fetch all exams with same name/class/semester
       const { data: relatedExams, error: relatedExamsError } = await supabase
         .from('exams')
         .select('id, subject, total_marks')
+        .eq('school_id', profile.school_id)
         .eq('name', exam.name)
-        .eq('class', exam.class);
+        .eq('class', exam.class)
+        .eq('semester', exam.semester || 'First Semester');
 
       if (relatedExamsError) throw relatedExamsError;
 
@@ -175,15 +229,16 @@ const Exams: React.FC = () => {
         return acc;
       }, {});
 
-      // 3. Fetch grades for these exams
+      // 3. Fetch grades
       const { data: gradesData, error: gradesError } = await supabase
         .from('grades')
         .select('*')
+        .eq('school_id', profile.school_id)
         .in('exam_id', examIds);
 
       if (gradesError) throw gradesError;
 
-      // 4. Map students to their grades
+      // 4. Map students to grades
       const reports = studentsData.map((student: any) => {
         const studentGrades = gradesData
           .filter((g: any) => g.student_id === student.id)
@@ -225,11 +280,14 @@ const Exams: React.FC = () => {
       name: formData.name,
       subject: formData.subject,
       class: formData.class,
+      section: formData.section || null, // Save section
       date: formData.date,
       total_marks: formData.totalMarks,
       passing_marks: formData.passingMarks,
       duration: formData.duration,
       status: formData.status,
+      semester: formData.semester,
+      school_id: profile?.school_id
     };
 
     await toast.promise(
@@ -288,6 +346,8 @@ const Exams: React.FC = () => {
     return <CardGridSkeleton title="Exams" />;
   }
 
+  const canManage = ['admin', 'principal', 'teacher', 'system_admin'].includes(profile?.role || '');
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -295,34 +355,55 @@ const Exams: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Exams</h1>
           <p className="text-gray-600 mt-1">Schedule and manage examinations</p>
         </div>
-        <Button onClick={handleAdd}>
-          <Plus size={20} className="mr-2" />
-          Schedule Exam
-        </Button>
+        {canManage && (
+          <Button onClick={handleAdd}>
+            <Plus size={20} className="mr-2" />
+            Schedule Exam
+          </Button>
+        )}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <input
-              type="text"
-              placeholder="Search exams by name, subject, or class..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
-          </div>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-          >
-            <option value="all">All Status</option>
-            <option value="upcoming">Upcoming</option>
-            <option value="ongoing">Ongoing</option>
-            <option value="completed">Completed</option>
-          </select>
+      {/* Semester Tabs */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="flex overflow-x-auto border-b border-gray-200">
+            {['First Semester', 'Second Semester', 'Summer Semester'].map(sem => (
+                <button
+                    key={sem}
+                    onClick={() => setActiveSemester(sem)}
+                    className={`flex-1 py-4 px-6 text-sm font-medium whitespace-nowrap transition-colors ${
+                        activeSemester === sem 
+                        ? 'bg-blue-50 text-blue-700 border-b-2 border-blue-600' 
+                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    }`}
+                >
+                    {sem}
+                </button>
+            ))}
+        </div>
+        
+        <div className="p-4">
+            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <input
+                type="text"
+                placeholder="Search exams by name, subject, or class..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                />
+            </div>
+            <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            >
+                <option value="all">All Status</option>
+                <option value="upcoming">Upcoming</option>
+                <option value="ongoing">Ongoing</option>
+                <option value="completed">Completed</option>
+            </select>
+            </div>
         </div>
       </div>
 
@@ -343,10 +424,11 @@ const Exams: React.FC = () => {
               <div className="flex items-center text-sm"><BookOpen size={16} className="text-gray-400 mr-3" /><div><span className="text-gray-500">Subject: </span><span className="font-medium text-gray-900">{exam.subject}</span></div></div>
               <div className="flex items-center text-sm"><Calendar size={16} className="text-gray-400 mr-3" /><div><span className="text-gray-500">Date: </span><span className="font-medium text-gray-900">{exam.date}</span></div></div>
               <div className="flex items-center text-sm"><Clock size={16} className="text-gray-400 mr-3" /><div><span className="text-gray-500">Duration: </span><span className="font-medium text-gray-900">{exam.duration}</span></div></div>
+              <div className="flex items-center text-sm"><Layers size={16} className="text-gray-400 mr-3" /><div><span className="text-gray-500">Semester: </span><span className="font-medium text-gray-900">{exam.semester || 'N/A'}</span></div></div>
             </div>
 
             <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
-              <span className="text-gray-500 text-sm">Class {exam.class}</span>
+              <span className="text-gray-500 text-sm">Class {exam.class} {exam.section ? `- Sec ${exam.section}` : ''}</span>
               <div className="text-right">
                 <div className="text-gray-500 text-sm">Marks</div>
                 <div className="font-bold text-gray-900">{exam.totalMarks}</div>
@@ -354,39 +436,48 @@ const Exams: React.FC = () => {
             </div>
 
             <div className="pt-4 border-t border-gray-100 mt-4 flex flex-col gap-2">
-              <div className="flex gap-2">
-                <Button 
-                  variant="secondary" 
-                  size="sm" 
-                  className="flex-1 text-xs"
-                  onClick={() => handleGenerateAdmitCards(exam)}
-                >
-                  <FileText className="h-3 w-3 mr-1" />
-                  Admit Cards
-                </Button>
-                <Button 
-                  variant="secondary" 
-                  size="sm" 
-                  className="flex-1 text-xs"
-                  onClick={() => handleGenerateReportCards(exam)}
-                >
-                  <FileBarChart className="h-3 w-3 mr-1" />
-                  Report Cards
-                </Button>
-              </div>
-              <Button 
-                  variant="primary" 
-                  size="sm" 
-                  className="w-full text-xs"
-                  onClick={() => handleEnterGrades(exam)}
-                >
-                  <GraduationCap className="h-3 w-3 mr-1" />
-                  Enter Grades
-              </Button>
+              {canManage && (
+                <>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      className="flex-1 text-xs"
+                      onClick={() => handleGenerateAdmitCards(exam)}
+                    >
+                      <FileText className="h-3 w-3 mr-1" />
+                      Admit Cards
+                    </Button>
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      className="flex-1 text-xs"
+                      onClick={() => handleGenerateReportCards(exam)}
+                    >
+                      <FileBarChart className="h-3 w-3 mr-1" />
+                      Report Cards
+                    </Button>
+                  </div>
+                  <Button 
+                      variant="primary" 
+                      size="sm" 
+                      className="w-full text-xs"
+                      onClick={() => handleEnterGrades(exam)}
+                    >
+                      <GraduationCap className="h-3 w-3 mr-1" />
+                      Enter Grades
+                  </Button>
+                </>
+              )}
+              
               <div className="flex justify-end gap-1 mt-1">
                 <Button variant="ghost" size="icon" onClick={() => handleView(exam)} title="View Details"><Eye className="h-4 w-4" /></Button>
-                <Button variant="ghost" size="icon" onClick={() => handleEdit(exam)} title="Edit Exam"><Edit className="h-4 w-4" /></Button>
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(exam)} title="Delete Exam"><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                {canManage && (
+                  <>
+                    <Button variant="ghost" size="icon" onClick={() => handleEdit(exam)} title="Edit Exam"><Edit className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(exam)} title="Delete Exam"><Trash2 className="h-4 w-4 text-red-500" /></Button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -395,7 +486,8 @@ const Exams: React.FC = () => {
 
       {filteredExams.length === 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center">
-          <p className="text-gray-500">No exams found matching your criteria.</p>
+          <p className="text-gray-500">No exams found for {activeSemester}.</p>
+          {canManage && <Button onClick={handleAdd} variant="secondary" className="mt-4">Schedule Exam</Button>}
         </div>
       )}
 
@@ -415,13 +507,15 @@ const Exams: React.FC = () => {
         <ExamForm ref={formRef} exam={selectedExam} onSubmit={handleSaveExam} />
       </Modal>
 
+      {/* View Modal, Delete Modal, Admit Card Modal, Report Card Modal */}
+      
       {selectedExam && (
         <Modal isOpen={isViewModalOpen} onClose={() => setViewModalOpen(false)} title="Exam Details">
           <div className="space-y-4">
             <div className="flex items-center justify-between border-b pb-4">
               <div>
                 <h3 className="text-xl font-bold text-gray-900">{selectedExam.name}</h3>
-                <p className="text-sm text-gray-500">{selectedExam.subject} - Class {selectedExam.class}</p>
+                <p className="text-sm text-gray-500">{selectedExam.subject} - Class {selectedExam.class} {selectedExam.section ? `- Sec ${selectedExam.section}` : ''}</p>
               </div>
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(selectedExam.status)}`}>
                 {selectedExam.status}
@@ -429,6 +523,10 @@ const Exams: React.FC = () => {
             </div>
             
             <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-500">Semester</p>
+                <p className="font-medium">{selectedExam.semester || 'N/A'}</p>
+              </div>
               <div>
                 <p className="text-sm text-gray-500">Date</p>
                 <p className="font-medium">{selectedExam.date}</p>
@@ -447,16 +545,18 @@ const Exams: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-4 flex justify-end gap-2">
-               <Button variant="secondary" onClick={() => { setViewModalOpen(false); handleGenerateAdmitCards(selectedExam); }}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  Admit Cards
-               </Button>
-               <Button onClick={() => { setViewModalOpen(false); handleEnterGrades(selectedExam); }}>
-                  <GraduationCap className="mr-2 h-4 w-4" />
-                  Enter Grades
-               </Button>
-            </div>
+            {canManage && (
+              <div className="pt-4 flex justify-end gap-2">
+                 <Button variant="secondary" onClick={() => { setViewModalOpen(false); handleGenerateAdmitCards(selectedExam); }}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Admit Cards
+                 </Button>
+                 <Button onClick={() => { setViewModalOpen(false); handleEnterGrades(selectedExam); }}>
+                    <GraduationCap className="mr-2 h-4 w-4" />
+                    Enter Grades
+                 </Button>
+              </div>
+            )}
           </div>
         </Modal>
       )}
@@ -493,7 +593,7 @@ const Exams: React.FC = () => {
           {loadingStudents ? (
             <div className="text-center py-8">Loading students...</div>
           ) : examStudents.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">No students found for Class {selectedExam?.class}.</div>
+            <div className="text-center py-8 text-gray-500">No students found for Class {selectedExam?.class} {selectedExam?.section ? `Section ${selectedExam.section}` : ''}.</div>
           ) : (
             <div ref={admitCardPrintRef}>
               {examStudents.map((student) => (

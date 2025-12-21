@@ -10,8 +10,10 @@ import toast from 'react-hot-toast';
 import { formatCurrency, formatDate } from '../utils/format';
 import EmptyState from '../components/ui/EmptyState';
 import Badge from '../components/ui/Badge';
+import { useGlobal } from '../context/GlobalContext';
 
 const Expenses: React.FC = () => {
+  const { profile } = useGlobal();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -20,24 +22,30 @@ const Expenses: React.FC = () => {
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // FIX: Explicitly define formRef to prevent "formRef is not defined" error
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     const fetchExpenses = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
       try {
-        const { data, error } = await supabase.from('expenses').select('*').order('date', { ascending: false });
+        const { data, error } = await supabase
+          .from('expenses')
+          .select('*')
+          .eq('school_id', profile.school_id)
+          .order('date', { ascending: false });
+          
         if (error) throw error;
         setExpenses(data);
       } catch (error: any) {
-        const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-        toast.error(`Failed to fetch expenses: ${errorMessage}`);
+        toast.error(`Failed to fetch expenses: ${error.message}`);
       } finally {
         setLoading(false);
       }
     };
     fetchExpenses();
-  }, []);
+  }, [profile]);
 
   const filteredExpenses = expenses.filter(expense =>
     expense.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -61,46 +69,41 @@ const Expenses: React.FC = () => {
 
   const handleSaveExpense = async (formData: Omit<Expense, 'id' | 'created_at'> & { id?: string }) => {
     setIsSubmitting(true);
-    await toast.promise(
-      (async () => {
+    try {
+        const payload = { ...formData, school_id: profile?.school_id };
         if (formData.id) {
-          const { data, error } = await supabase.from('expenses').update(formData).eq('id', formData.id).select().single();
+          const { data, error } = await supabase.from('expenses').update(payload).eq('id', formData.id).select().single();
           if (error) throw error;
           setExpenses(prev => prev.map(e => e.id === formData.id ? data : e));
         } else {
-          const { data, error } = await supabase.from('expenses').insert(formData).select().single();
+          const { data, error } = await supabase.from('expenses').insert(payload).select().single();
           if (error) throw error;
           setExpenses(prev => [data, ...prev]);
         }
-      })(),
-      {
-        loading: 'Saving expense...',
-        success: 'Expense saved successfully!',
-        error: (err) => `Failed to save expense: ${err.message}`,
-      }
-    );
-    setIsSubmitting(false);
-    setModalOpen(false);
+        toast.success('Expense saved successfully!');
+        setModalOpen(false);
+    } catch(error: any) {
+        toast.error(`Failed to save expense: ${error.message}`);
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const handleConfirmDelete = async () => {
     if (selectedExpense) {
       setIsSubmitting(true);
-      await toast.promise(
-        (async () => {
+      try {
           const { error } = await supabase.from('expenses').delete().eq('id', selectedExpense.id);
           if (error) throw error;
           setExpenses(prev => prev.filter(e => e.id !== selectedExpense.id));
-        })(),
-        {
-          loading: 'Deleting expense...',
-          success: 'Expense deleted successfully!',
-          error: (err) => `Failed to delete expense: ${err.message}`,
-        }
-      );
-      setIsSubmitting(false);
-      setDeleteModalOpen(false);
-      setSelectedExpense(null);
+          toast.success('Expense deleted successfully!');
+          setDeleteModalOpen(false);
+          setSelectedExpense(null);
+      } catch(error: any) {
+          toast.error(`Failed to delete expense: ${error.message}`);
+      } finally {
+          setIsSubmitting(false);
+      }
     }
   };
 
@@ -120,10 +123,6 @@ const Expenses: React.FC = () => {
           <p className="text-slate-500 mt-1">Track and manage all school expenses</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" className="border border-slate-200">
-            <Download size={18} className="mr-2" />
-            Export
-          </Button>
           <Button onClick={handleAdd} className="shadow-md shadow-blue-500/20">
             <Plus size={18} className="mr-2" />
             Add Expense

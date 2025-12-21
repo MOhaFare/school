@@ -38,9 +38,11 @@ const transformExamToCamelCase = (dbExam: any): Exam => ({
   passingMarks: dbExam.passing_marks,
   duration: dbExam.duration,
   status: dbExam.status,
+  semester: dbExam.semester, // Added semester
 });
 
 const Grades: React.FC = () => {
+  const { profile } = useGlobal();
   const [grades, setGrades] = useState<Grade[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
@@ -53,23 +55,33 @@ const Grades: React.FC = () => {
   const [selectedGrade, setSelectedGrade] = useState<Grade | null>(null);
   const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { createNotification, profile } = useGlobal();
   const [searchParams, setSearchParams] = useSearchParams();
   const preSelectedExamId = searchParams.get('examId');
   
   const formRef = useRef<HTMLFormElement>(null);
 
   const fetchData = async () => {
+    if (!profile) return;
     setLoading(true);
     try {
+      let gradesQuery = supabase.from('grades').select('*').order('date', { ascending: false });
+      let studentsQuery = supabase.from('students').select('id, name, user_id');
+      let examsQuery = supabase.from('exams').select('id, name, subject, class, total_marks, passing_marks, date, duration, status, semester');
+
+      if (profile.role !== 'system_admin' && profile.school_id) {
+        gradesQuery = gradesQuery.eq('school_id', profile.school_id);
+        studentsQuery = studentsQuery.eq('school_id', profile.school_id);
+        examsQuery = examsQuery.eq('school_id', profile.school_id);
+      }
+
       const [
         { data: gradesData, error: gradesError },
         { data: studentsData, error: studentsError },
         { data: examsData, error: examsError }
       ] = await Promise.all([
-        supabase.from('grades').select('*').order('date', { ascending: false }),
-        supabase.from('students').select('id, name, user_id'),
-        supabase.from('exams').select('id, name, subject, class, total_marks, passing_marks, date, duration, status')
+        gradesQuery,
+        studentsQuery,
+        examsQuery
       ]);
 
       if (gradesError) throw gradesError;
@@ -82,7 +94,6 @@ const Grades: React.FC = () => {
 
       if (preSelectedExamId) {
           setFilterExamId(preSelectedExamId);
-          // UX Improvement: Auto-open bulk entry if coming from Exams page
           setIsBulkModalOpen(true);
       }
 
@@ -96,7 +107,7 @@ const Grades: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [profile]);
 
   const enrichedGrades = useMemo(() => {
     return grades.map(grade => {
@@ -108,6 +119,7 @@ const Grades: React.FC = () => {
         examName: exam?.name || grade.exam_id,
         subject: exam?.subject || 'N/A',
         total_marks: exam?.totalMarks || grade.total_marks,
+        semester: exam?.semester, // Enrich with semester
       };
     });
   }, [grades, students, exams]);
@@ -182,7 +194,7 @@ const Grades: React.FC = () => {
           gpa: parseFloat(gpa.toFixed(2)),
           grade: gradeLetter,
           date: exam.date,
-          school_id: profile?.school_id // Explicitly add school_id
+          school_id: profile?.school_id
         };
 
         if (formData.id) {
@@ -284,7 +296,7 @@ const Grades: React.FC = () => {
                 >
                     <option value="">All Exams</option>
                     {exams.map(e => (
-                        <option key={e.id} value={e.id}>{e.name} - {e.subject}</option>
+                        <option key={e.id} value={e.id}>{e.name} - {e.subject} ({e.semester})</option>
                     ))}
                 </select>
                 {filterExamId && (
@@ -312,7 +324,11 @@ const Grades: React.FC = () => {
               {filteredGrades.map((grade) => (
                 <tr key={grade.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap"><div className="flex items-center"><div className="h-10 w-10 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white font-bold">{grade.studentName.charAt(0)}</div><div className="ml-4"><div className="text-sm font-medium text-gray-900">{grade.studentName}</div><div className="text-sm text-gray-500">{grade.student_id}</div></div></div></td>
-                  <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell"><div className="text-sm text-gray-900">{grade.examName}</div><div className="text-sm text-gray-500">{grade.subject}</div></td>
+                  <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell">
+                    <div className="text-sm text-gray-900">{grade.examName}</div>
+                    <div className="text-sm text-gray-500">{grade.subject}</div>
+                    <div className="text-xs text-gray-400">{grade.semester}</div>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap"><div className="text-sm font-medium text-gray-900">{grade.marks_obtained}/{grade.total_marks}</div><div className="text-xs text-gray-500">{grade.percentage.toFixed(1)}%</div></td>
                   <td className="px-6 py-4 whitespace-nowrap"><span className={`px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full ${getGradeColor(grade.grade)}`}>{grade.grade}</span></td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

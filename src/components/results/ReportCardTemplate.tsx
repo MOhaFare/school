@@ -98,12 +98,16 @@ const ReportCardTemplate = React.forwardRef<HTMLDivElement, ReportCardProps>(({
                     <span className="font-semibold text-slate-900 flex-1">{exam.name}</span>
                 </div>
                 <div className="flex border-b border-slate-200 pb-1">
+                    <span className="font-bold text-slate-500 w-32">Semester:</span>
+                    <span className="font-semibold text-slate-900 flex-1">{exam.semester || 'N/A'}</span>
+                </div>
+                <div className="flex border-b border-slate-200 pb-1">
                     <span className="font-bold text-slate-500 w-32">Academic Year:</span>
                     <span className="font-semibold text-slate-900 flex-1">{academicYear}</span>
                 </div>
                 {student.parent_name && (
-                    <div className="flex border-b border-slate-200 pb-1 col-span-2">
-                        <span className="font-bold text-slate-500 w-32">Parent/Guardian:</span>
+                    <div className="flex border-b border-slate-200 pb-1">
+                        <span className="font-bold text-slate-500 w-32">Parent:</span>
                         <span className="font-semibold text-slate-900 flex-1">{student.parent_name}</span>
                     </div>
                 )}

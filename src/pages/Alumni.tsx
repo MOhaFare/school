@@ -9,8 +9,10 @@ import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { formatDate } from '../utils/format';
 import { Student } from '../types';
+import { useGlobal } from '../context/GlobalContext';
 
 const Alumni: React.FC = () => {
+  const { profile } = useGlobal();
   const [activeTab, setActiveTab] = useState<'list' | 'events'>('list');
   const [alumni, setAlumni] = useState<Student[]>([]);
   const [events, setEvents] = useState<any[]>([]);
@@ -26,15 +28,17 @@ const Alumni: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, profile]);
 
   const fetchData = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
     try {
       if (activeTab === 'list') {
         const { data, error } = await supabase
           .from('students')
           .select('*')
+          .eq('school_id', profile.school_id)
           .eq('status', 'alumni')
           .order('name');
         if (error) throw error;
@@ -49,7 +53,11 @@ const Alumni: React.FC = () => {
             // ... map other fields if needed
         } as Student)));
       } else {
-        const { data, error } = await supabase.from('alumni_events').select('*').order('event_date', { ascending: false });
+        const { data, error } = await supabase
+          .from('alumni_events')
+          .select('*')
+          .eq('school_id', profile.school_id)
+          .order('event_date', { ascending: false });
         if (error) throw error;
         setEvents(data || []);
       }
@@ -75,11 +83,13 @@ const Alumni: React.FC = () => {
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = { ...eventForm, school_id: profile?.school_id };
+      
       if (selectedEvent) {
-        const { error } = await supabase.from('alumni_events').update(eventForm).eq('id', selectedEvent.id);
+        const { error } = await supabase.from('alumni_events').update(payload).eq('id', selectedEvent.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('alumni_events').insert(eventForm);
+        const { error } = await supabase.from('alumni_events').insert(payload);
         if (error) throw error;
       }
       toast.success('Event saved');

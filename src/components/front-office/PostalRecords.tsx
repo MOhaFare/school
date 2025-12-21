@@ -10,8 +10,10 @@ import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { formatDate } from '../../utils/format';
 import Badge from '../ui/Badge';
+import { useGlobal } from '../../context/GlobalContext';
 
 const PostalRecords: React.FC = () => {
+  const { profile } = useGlobal();
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,11 +26,17 @@ const PostalRecords: React.FC = () => {
 
   useEffect(() => {
     fetchRecords();
-  }, []);
+  }, [profile]);
 
   const fetchRecords = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
-    const { data, error } = await supabase.from('postal_records').select('*').order('date', { ascending: false });
+    const { data, error } = await supabase
+      .from('postal_records')
+      .select('*')
+      .eq('school_id', profile.school_id)
+      .order('date', { ascending: false });
+      
     if (error) toast.error('Failed to load postal records');
     else setRecords(data || []);
     setLoading(false);
@@ -50,11 +58,13 @@ const PostalRecords: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
+      
       if (selectedRecord) {
-        const { error } = await supabase.from('postal_records').update(formData).eq('id', selectedRecord.id);
+        const { error } = await supabase.from('postal_records').update(payload).eq('id', selectedRecord.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('postal_records').insert(formData);
+        const { error } = await supabase.from('postal_records').insert(payload);
         if (error) throw error;
       }
       toast.success('Record saved');

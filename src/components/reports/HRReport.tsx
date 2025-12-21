@@ -2,17 +2,23 @@ import React, { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
 import { Skeleton } from '../ui/Skeleton';
+import { useGlobal } from '../../context/GlobalContext';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
 const HRReport: React.FC = () => {
+  const { profile } = useGlobal();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
-      const { data: teachers } = await supabase.from('teachers').select('subject');
+      const { data: teachers } = await supabase
+        .from('teachers')
+        .select('subject')
+        .eq('school_id', profile.school_id);
       
       if (teachers) {
         const subjectCounts = teachers.reduce((acc: any, curr: any) => {
@@ -26,7 +32,7 @@ const HRReport: React.FC = () => {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [profile]);
 
   if (loading) return <Skeleton className="h-96 w-full" />;
 

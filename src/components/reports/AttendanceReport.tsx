@@ -2,15 +2,21 @@ import React, { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
 import { Skeleton } from '../ui/Skeleton';
+import { useGlobal } from '../../context/GlobalContext';
 
 const AttendanceReport: React.FC = () => {
+  const { profile } = useGlobal();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
-      const { data: attendance } = await supabase.from('attendance').select('date, status');
+      const { data: attendance } = await supabase
+        .from('attendance')
+        .select('date, status')
+        .eq('school_id', profile.school_id);
       
       if (attendance) {
         const dailyStats: any = {};
@@ -34,7 +40,7 @@ const AttendanceReport: React.FC = () => {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [profile]);
 
   if (loading) return <Skeleton className="h-96 w-full" />;
 

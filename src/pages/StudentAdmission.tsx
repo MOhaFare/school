@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { Student } from '../types';
+import { logAudit } from '../services/logger';
 
 const StudentAdmission: React.FC = () => {
   const navigate = useNavigate();
@@ -68,9 +69,17 @@ const StudentAdmission: React.FC = () => {
         if (url) studentToSave.avatar = url;
       }
       
-      const { error } = await supabase.from('students').insert(studentToSave);
+      const { data, error } = await supabase.from('students').insert(studentToSave).select().single();
       if (error) throw new Error(error.message);
       
+      // Log the action
+      await logAudit(
+        'Admit Student',
+        'Student Information',
+        `Admitted new student: ${studentToSave.name} (Class ${studentToSave.class}-${studentToSave.section})`,
+        undefined, undefined, studentToSave.school_id
+      );
+
       toast.success('Student admitted successfully!');
       navigate('/students');
     } catch (error: any) {

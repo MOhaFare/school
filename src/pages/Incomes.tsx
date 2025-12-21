@@ -10,8 +10,10 @@ import toast from 'react-hot-toast';
 import { formatCurrency, formatDate } from '../utils/format';
 import EmptyState from '../components/ui/EmptyState';
 import Badge from '../components/ui/Badge';
+import { useGlobal } from '../context/GlobalContext';
 
 const Incomes: React.FC = () => {
+  const { profile } = useGlobal();
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,9 +26,15 @@ const Incomes: React.FC = () => {
 
   useEffect(() => {
     const fetchIncomes = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
       try {
-        const { data, error } = await supabase.from('incomes').select('*').order('date', { ascending: false });
+        const { data, error } = await supabase
+          .from('incomes')
+          .select('*')
+          .eq('school_id', profile.school_id)
+          .order('date', { ascending: false });
+          
         if (error) throw error;
         setIncomes(data);
       } catch (error: any) {
@@ -37,7 +45,7 @@ const Incomes: React.FC = () => {
       }
     };
     fetchIncomes();
-  }, []);
+  }, [profile]);
 
   const filteredIncomes = incomes.filter(income =>
     income.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -63,12 +71,13 @@ const Incomes: React.FC = () => {
     setIsSubmitting(true);
     await toast.promise(
       (async () => {
+        const payload = { ...formData, school_id: profile?.school_id };
         if (formData.id) {
-          const { data, error } = await supabase.from('incomes').update(formData).eq('id', formData.id).select().single();
+          const { data, error } = await supabase.from('incomes').update(payload).eq('id', formData.id).select().single();
           if (error) throw error;
           setIncomes(prev => prev.map(i => i.id === formData.id ? data : i));
         } else {
-          const { data, error } = await supabase.from('incomes').insert(formData).select().single();
+          const { data, error } = await supabase.from('incomes').insert(payload).select().single();
           if (error) throw error;
           setIncomes(prev => [data, ...prev]);
         }

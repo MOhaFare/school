@@ -8,9 +8,10 @@ import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { useGlobal } from '../context/GlobalContext';
+import { formatDate } from '../utils/format';
 
 const Attendance: React.FC = () => {
-  const { profile } = useGlobal();
+  const { profile, user } = useGlobal();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
@@ -27,33 +28,95 @@ const Attendance: React.FC = () => {
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
       try {
-        const [
-          { data: attendanceData, error: attendanceError },
-          { data: studentsData, error: studentsError },
-          { data: classesData, error: classesError }
-        ] = await Promise.all([
-          supabase.from('attendance').select('*').order('date', { ascending: false }),
-          supabase.from('students').select('id, name'),
-          supabase.from('classes').select('id, name')
-        ]);
+        // 1. Identify if current user is a teacher and get their ID
+        let teacherId: string | null = null;
+        if (profile.role === 'teacher' && user) {
+            const { data: tData } = await supabase
+                .from('teachers')
+                .select('id')
+                .eq('user_id', user.id)
+                .eq('school_id', profile.school_id)
+                .single();
+            teacherId = tData?.id || null;
+        }
 
-        if (attendanceError) throw attendanceError;
-        if (studentsError) throw studentsError;
+        // 2. Fetch Classes (Filter by teacher if applicable)
+        let classesQuery = supabase
+            .from('classes')
+            .select('id, name, teacher_id')
+            .eq('school_id', profile.school_id);
+        
+        if (teacherId) {
+            classesQuery = classesQuery.eq('teacher_id', teacherId);
+        }
+
+        const { data: classesData, error: classesError } = await classesQuery;
         if (classesError) throw classesError;
 
+        const fetchedClasses = (classesData || []).map((c: any) => ({
+            ...c, 
+            name: c.name.startsWith('Class ') ? c.name : `Class ${c.name}`
+        }));
+        setClasses(fetchedClasses);
+
+        // 3. Fetch Students
+        // We fetch all students first, then filter in memory to match the specific class-section combinations
+        // This handles the "9-A" vs "Class 9-A" string matching robustly
+        const { data: studentsData, error: studentsError } = await supabase
+            .from('students')
+            .select('id, name, class, section')
+            .eq('school_id', profile.school_id)
+            .eq('status', 'active'); // Only active students
+
+        if (studentsError) throw studentsError;
+
+        let filteredStudents = studentsData || [];
+
+        // If teacher, only show students in their assigned classes
+        if (teacherId) {
+            // Create a set of allowed "Class-Section" strings from the fetched classes
+            // fetchedClasses names are like "Class 9-A"
+            const allowedClassSections = new Set(fetchedClasses.map((c: any) => c.name.replace('Class ', '')));
+            
+            filteredStudents = filteredStudents.filter((s: any) => 
+                allowedClassSections.has(`${s.class}-${s.section}`)
+            );
+        }
+        setStudents(filteredStudents);
+
+        // 4. Fetch Attendance Records
+        let attendanceQuery = supabase
+            .from('attendance')
+            .select('*')
+            .eq('school_id', profile.school_id)
+            .order('date', { ascending: false });
+
+        // If teacher, only show attendance for their classes
+        if (teacherId && fetchedClasses.length > 0) {
+             const allowedClassNames = fetchedClasses.map((c: any) => c.name);
+             attendanceQuery = attendanceQuery.in('class', allowedClassNames);
+        } else if (teacherId && fetchedClasses.length === 0) {
+             // Teacher has no classes, show nothing
+             attendanceQuery = attendanceQuery.eq('id', '00000000-0000-0000-0000-000000000000'); // Dummy filter
+        }
+
+        const { data: attendanceData, error: attendanceError } = await attendanceQuery;
+        if (attendanceError) throw attendanceError;
+
         setAttendanceRecords(attendanceData || []);
-        setStudents(studentsData || []);
-        setClasses(classesData.map((c: any) => ({...c, name: `Class ${c.name}`})) || []);
+
       } catch (error: any) {
+        console.error("Error fetching attendance data:", error);
         toast.error(`Failed to load data: ${error.message}`);
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, []);
+  }, [profile, user]);
 
   const enrichedRecords = useMemo(() => {
     return attendanceRecords.map(record => ({
@@ -67,6 +130,10 @@ const Attendance: React.FC = () => {
   );
 
   const handleAdd = () => {
+    if (classes.length === 0) {
+        toast.error("You are not assigned as a Class Teacher for any class.");
+        return;
+    }
     setSelectedRecord(null);
     setModalOpen(true);
   };
@@ -91,6 +158,7 @@ const Attendance: React.FC = () => {
           status: formData.status,
           class: formData.class,
           session: formData.session,
+          school_id: profile?.school_id
         };
         if (formData.id) {
           const { data, error } = await supabase.from('attendance').update(recordToSave).eq('id', formData.id).select().single();
@@ -150,8 +218,8 @@ const Attendance: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Attendance</h1>
-          <p className="text-gray-600 mt-1">Track student daily attendance</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Attendance</h1>
+          <p className="text-slate-500 mt-1">Track student daily attendance</p>
         </div>
         {canEdit && (
           <Button onClick={handleAdd}>
@@ -183,12 +251,12 @@ const Attendance: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">Class</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Session</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Student</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider hidden md:table-cell">Class</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Session</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -199,7 +267,7 @@ const Attendance: React.FC = () => {
                     <div className="text-sm text-gray-500">{record.studentId}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap hidden md:table-cell text-sm text-gray-700">{record.class}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{record.date}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{formatDate(record.date)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                     <div className="flex items-center gap-1">
                         {record.session === 'Afternoon' ? <Moon size={14} className="text-purple-500"/> : <Sun size={14} className="text-orange-500"/>}
@@ -221,6 +289,15 @@ const Attendance: React.FC = () => {
                   </td>
                 </tr>
               ))}
+              {filteredRecords.length === 0 && (
+                  <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                          {profile?.role === 'teacher' && classes.length === 0 
+                            ? "You are not assigned to any classes." 
+                            : "No attendance records found."}
+                      </td>
+                  </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -19,6 +19,11 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
   const { profile } = useGlobal();
   const [exams, setExams] = useState<Exam[]>([]);
   const [selectedExamId, setSelectedExamId] = useState<string>(initialExamId || '');
+  
+  // Section Filtering
+  const [sections, setSections] = useState<string[]>([]);
+  const [selectedSection, setSelectedSection] = useState<string>('');
+
   const [students, setStudents] = useState<Student[]>([]);
   const [marks, setMarks] = useState<Record<string, string>>({}); // studentId -> marks
   const [existingGrades, setExistingGrades] = useState<Record<string, string>>({}); // studentId -> gradeId
@@ -31,11 +36,12 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
   // Fetch Exams on mount
   useEffect(() => {
     const fetchExams = async () => {
+      if (!profile?.school_id) return;
       try {
         const { data, error } = await supabase
           .from('exams')
           .select('*')
-          .neq('status', 'completed') // Only show upcoming or ongoing exams
+          .eq('school_id', profile.school_id)
           .order('date', { ascending: false });
         
         if (error) throw error;
@@ -58,11 +64,38 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
       }
     };
     fetchExams();
-  }, []);
+  }, [profile]);
 
-  // Fetch Students and Existing Grades when Exam changes
+  // Fetch Sections when Exam is selected
   useEffect(() => {
     if (!selectedExamId) {
+        setSections([]);
+        setSelectedSection('');
+        return;
+    }
+    const exam = exams.find(e => e.id === selectedExamId);
+    if (!exam) return;
+
+    const fetchSections = async () => {
+        // Fetch sections that actually have students in this class
+        const { data } = await supabase
+            .from('students')
+            .select('section')
+            .eq('class', exam.class)
+            .eq('school_id', profile?.school_id);
+        
+        if (data) {
+            const uniqueSections = Array.from(new Set(data.map(s => s.section))).sort();
+            setSections(uniqueSections);
+            if (uniqueSections.length > 0) setSelectedSection(uniqueSections[0]);
+        }
+    };
+    fetchSections();
+  }, [selectedExamId, exams, profile]);
+
+  // Fetch Students and Existing Grades when Exam AND Section changes
+  useEffect(() => {
+    if (!selectedExamId || !selectedSection) {
       setStudents([]);
       setMarks({});
       return;
@@ -74,11 +107,13 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
         const exam = exams.find(e => e.id === selectedExamId);
         if (!exam) return;
 
-        // 1. Fetch Students in Exam Class
+        // 1. Fetch Students in Exam Class AND Selected Section
         const { data: studentsData, error: studentsError } = await supabase
           .from('students')
           .select('*')
           .eq('class', exam.class)
+          .eq('section', selectedSection) // Filter by Section
+          .eq('school_id', profile?.school_id)
           .eq('status', 'active')
           .order('name');
 
@@ -124,7 +159,7 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
     };
 
     fetchData();
-  }, [selectedExamId, exams]);
+  }, [selectedExamId, selectedSection, exams, profile]);
 
   const handleMarkChange = (studentId: string, value: string) => {
     setMarks(prev => ({ ...prev, [studentId]: value }));
@@ -150,6 +185,17 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
     const exam = exams.find(e => e.id === selectedExamId);
     if (!exam) return;
 
+    // Validate marks
+    const invalidEntries = Object.entries(marks).filter(([_, markStr]) => {
+        const mark = parseFloat(markStr);
+        return !isNaN(mark) && mark > exam.totalMarks;
+    });
+
+    if (invalidEntries.length > 0) {
+        toast.error(`Cannot save: ${invalidEntries.length} student(s) have marks exceeding the total (${exam.totalMarks}).`);
+        return;
+    }
+
     setSaving(true);
     const updates: any[] = [];
     const inserts: any[] = [];
@@ -157,10 +203,6 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
     Object.entries(marks).forEach(([studentId, markStr]) => {
       const mark = parseFloat(markStr);
       if (isNaN(mark)) return; // Skip empty or invalid
-
-      if (mark > exam.totalMarks) {
-         return; 
-      }
 
       const { percentage, gpa, grade } = calculateGrade(mark, exam.totalMarks);
       const gradeId = existingGrades[studentId];
@@ -173,7 +215,7 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
         gpa,
         grade,
         date: exam.date,
-        school_id: profile?.school_id // Explicitly add school_id
+        school_id: profile?.school_id
       };
 
       if (gradeId) {
@@ -213,7 +255,7 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
   return (
     <div className="space-y-6 h-full flex flex-col">
       {/* Header Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label>Select Exam</Label>
           <Select 
@@ -229,29 +271,42 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
             ))}
           </Select>
         </div>
+
+        <div className="space-y-2">
+          <Label>Select Section</Label>
+          <Select 
+            value={selectedSection} 
+            onChange={e => setSelectedSection(e.target.value)}
+            disabled={!selectedExamId}
+          >
+            <option value="">-- Choose Section --</option>
+            {sections.map(s => (
+              <option key={s} value={s}>Section {s}</option>
+            ))}
+          </Select>
+        </div>
         
-        {selectedExamId && (
-          <div className="space-y-2">
-            <Label>Search Student</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <Input 
-                value={searchTerm} 
-                onChange={e => setSearchTerm(e.target.value)} 
-                placeholder="Name or Roll No..." 
-                className="pl-10"
-              />
-            </div>
+        <div className="space-y-2">
+          <Label>Search Student</Label>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <Input 
+              value={searchTerm} 
+              onChange={e => setSearchTerm(e.target.value)} 
+              placeholder="Name or Roll No..." 
+              className="pl-10"
+              disabled={!selectedSection}
+            />
           </div>
-        )}
+        </div>
       </div>
 
       {/* Main Content Area */}
       <div className="flex-grow overflow-hidden border border-slate-200 rounded-lg bg-slate-50 relative">
-        {!selectedExamId ? (
+        {!selectedExamId || !selectedSection ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-400">
             <AlertCircle size={48} className="mb-4 opacity-50" />
-            <p>Please select an exam to start entering grades.</p>
+            <p>Please select an exam and section to start entering grades.</p>
           </div>
         ) : loadingStudents ? (
           <div className="flex items-center justify-center h-64">
@@ -259,7 +314,7 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
           </div>
         ) : students.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-slate-500">
-            <p>No active students found in Class {selectedExamObj?.class}.</p>
+            <p>No active students found in Class {selectedExamObj?.class} - Section {selectedSection}.</p>
           </div>
         ) : (
           <div className="absolute inset-0 overflow-auto">
@@ -274,9 +329,10 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
               </thead>
               <tbody className="divide-y divide-slate-200">
                 {filteredStudents.map(student => {
-                  const currentMark = parseFloat(marks[student.id] || '0');
-                  const { grade } = calculateGrade(currentMark, selectedExamObj?.totalMarks || 100);
-                  const isInvalid = currentMark > (selectedExamObj?.totalMarks || 100);
+                  const currentMarkStr = marks[student.id] || '';
+                  const currentMark = parseFloat(currentMarkStr);
+                  const { grade } = calculateGrade(isNaN(currentMark) ? 0 : currentMark, selectedExamObj?.totalMarks || 100);
+                  const isInvalid = !isNaN(currentMark) && currentMark > (selectedExamObj?.totalMarks || 100);
 
                   return (
                     <tr key={student.id} className="hover:bg-slate-50">
@@ -294,20 +350,25 @@ const BulkGradeEntryModal: React.FC<BulkGradeEntryModalProps> = ({ onClose, onSu
                           type="number" 
                           min="0" 
                           max={selectedExamObj?.totalMarks} 
-                          value={marks[student.id] || ''} 
+                          value={currentMarkStr} 
                           onChange={e => handleMarkChange(student.id, e.target.value)}
-                          className={`h-9 ${isInvalid ? 'border-red-500 focus:ring-red-500' : ''}`}
-                          placeholder="0"
+                          className={`h-9 ${isInvalid ? 'border-red-500 focus:ring-red-500 bg-red-50' : ''}`}
+                          placeholder="-"
                         />
+                        {isInvalid && <span className="text-xs text-red-500 absolute mt-1">Exceeds max</span>}
                       </td>
                       <td className="px-6 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          grade === 'F' ? 'bg-red-100 text-red-800' : 
-                          grade.startsWith('A') ? 'bg-green-100 text-green-800' : 
-                          'bg-blue-100 text-blue-800'
-                        }`}>
-                          {marks[student.id] ? grade : '-'}
-                        </span>
+                        {currentMarkStr !== '' && !isNaN(currentMark) ? (
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            grade === 'F' ? 'bg-red-100 text-red-800' : 
+                            grade.startsWith('A') ? 'bg-green-100 text-green-800' : 
+                            'bg-blue-100 text-blue-800'
+                            }`}>
+                            {grade}
+                            </span>
+                        ) : (
+                            <span className="text-gray-300">-</span>
+                        )}
                       </td>
                     </tr>
                   );

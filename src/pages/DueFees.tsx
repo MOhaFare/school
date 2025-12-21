@@ -7,6 +7,7 @@ import { formatCurrency, formatDate } from '../utils/format';
 import Badge from '../components/ui/Badge';
 import toast from 'react-hot-toast';
 import EmptyState from '../components/ui/EmptyState';
+import { useGlobal } from '../context/GlobalContext';
 
 interface DueFee {
   id: string;
@@ -21,6 +22,7 @@ interface DueFee {
 }
 
 const DueFees: React.FC = () => {
+  const { profile } = useGlobal();
   const [fees, setFees] = useState<DueFee[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,13 +31,15 @@ const DueFees: React.FC = () => {
 
   useEffect(() => {
     fetchDueFees();
-  }, []);
+  }, [profile]);
 
   const fetchDueFees = async () => {
+    if (!profile) return;
+    
     setLoading(true);
     try {
       // Fetch fees that are NOT paid
-      const { data: feesData, error: feesError } = await supabase
+      let query = supabase
         .from('fees')
         .select(`
           id, amount, due_date, description, status, student_id,
@@ -43,6 +47,13 @@ const DueFees: React.FC = () => {
         `)
         .neq('status', 'paid')
         .order('due_date', { ascending: true });
+
+      // Apply School Isolation
+      if (profile.role !== 'system_admin' && profile.school_id) {
+        query = query.eq('school_id', profile.school_id);
+      }
+
+      const { data: feesData, error: feesError } = await query;
 
       if (feesError) throw feesError;
 

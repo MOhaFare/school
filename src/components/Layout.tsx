@@ -270,6 +270,7 @@ const adminNavStructure: NavItem[] = [
 // Simplified menus for other roles
 const teacherNavStructure: NavItem[] = [
   { title: 'Dashboard', translationKey: 'dashboard', icon: LayoutDashboard, path: '/' },
+  { title: 'My Profile', translationKey: 'profile', icon: User, path: '/profile' },
   { title: 'Students', translationKey: 'studentInfo', icon: GraduationCap, path: '/students' },
   { title: 'My Classes', icon: Library, path: '/classes' },
   { title: 'Live Classes', icon: Video, path: '/live-classes' },
@@ -291,7 +292,7 @@ const teacherNavStructure: NavItem[] = [
 
 const studentNavStructure: NavItem[] = [
   { title: 'Dashboard', translationKey: 'dashboard', icon: LayoutDashboard, path: '/' },
-  { title: 'My Profile', translationKey: 'profile', icon: User, path: '/students' },
+  { title: 'My Profile', translationKey: 'profile', icon: User, path: '/profile' },
   { title: 'Homework', icon: Book, path: '/homework' },
   { title: 'Download Center', icon: DownloadCloud, path: '/download-center' },
   { title: 'Live Classes', icon: Video, path: '/live-classes' },
@@ -315,6 +316,7 @@ const studentNavStructure: NavItem[] = [
 
 const cashierNavStructure: NavItem[] = [
   { title: 'Dashboard', translationKey: 'dashboard', icon: LayoutDashboard, path: '/' },
+  { title: 'My Profile', translationKey: 'profile', icon: User, path: '/profile' },
   {
     title: 'Fees Collection',
     translationKey: 'fees',
@@ -342,6 +344,7 @@ const cashierNavStructure: NavItem[] = [
 
 const parentNavStructure: NavItem[] = [
   { title: 'Dashboard', translationKey: 'dashboard', icon: LayoutDashboard, path: '/' },
+  { title: 'My Profile', translationKey: 'profile', icon: User, path: '/profile' },
   { title: 'My Children', icon: Users, path: '/students' },
   { title: 'Fees', translationKey: 'fees', icon: DollarSign, path: '/fees' },
   { title: 'Homework', icon: Book, path: '/homework' },
@@ -672,7 +675,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                       <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
                     </div>
                     <div className="p-1.5">
-                      <NavLink to={profile?.role === 'student' ? '/students' : '/teachers'} className="flex items-center w-full px-3 py-2 text-sm text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                      <NavLink to="/profile" className="flex items-center w-full px-3 py-2 text-sm text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
                         <User className="mr-2.5 h-4 w-4 text-slate-400" />
                         {t('profile')}
                       </NavLink>

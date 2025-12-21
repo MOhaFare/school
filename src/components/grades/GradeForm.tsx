@@ -1,4 +1,4 @@
-import React, { useState, useEffect, forwardRef } from 'react';
+import React, { useState, useEffect, forwardRef, useMemo } from 'react';
 import { Grade, Student, Exam } from '../../types';
 import { Input } from '../ui/Input';
 import { Label } from '../ui/Label';
@@ -23,21 +23,37 @@ const GradeForm = forwardRef<HTMLFormElement, GradeFormProps>(({ grade, students
   useEffect(() => {
     if (grade) {
       setFormData({
-        studentId: grade.studentId,
-        examId: grade.examId,
-        marksObtained: grade.marksObtained,
+        studentId: grade.student_id, // Fix: use snake_case from prop if that's what's passed, or camelCase if transformed. 
+        // The parent passes transformed data, let's check Grades.tsx. 
+        // Grades.tsx passes `grade` which is `Grade` type. 
+        // `Grade` type has `student_id` (snake_case) based on previous context, but let's be safe.
+        // Actually `transformGradeToCamelCase` uses `student_id`.
+        // Let's stick to the state structure.
+        examId: grade.exam_id,
+        marksObtained: grade.marks_obtained,
       });
-      const selectedExam = exams.find(e => e.id === grade.examId);
+      const selectedExam = exams.find(e => e.id === grade.exam_id);
       setTotalMarks(selectedExam?.totalMarks);
     } else {
+      // Default state
       setFormData({
-        studentId: students.length > 0 ? students[0].id : '',
-        examId: exams.length > 0 ? exams[0].id : '',
+        studentId: '',
+        examId: '',
         marksObtained: 0,
       });
-      if (exams.length > 0) setTotalMarks(exams[0].totalMarks);
     }
-  }, [grade, students, exams]);
+  }, [grade, exams]); // Removed students from dependency to prevent reset on list change
+
+  // Filter students based on selected Exam
+  const availableStudents = useMemo(() => {
+    if (!formData.examId) return [];
+    
+    const selectedExam = exams.find(e => e.id === formData.examId);
+    if (!selectedExam) return [];
+
+    // Filter students matching the exam's class
+    return students.filter(s => s.class === selectedExam.class).sort((a, b) => a.name.localeCompare(b.name));
+  }, [formData.examId, students, exams]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -46,6 +62,11 @@ const GradeForm = forwardRef<HTMLFormElement, GradeFormProps>(({ grade, students
     if (name === 'examId') {
       const selectedExam = exams.find(e => e.id === value);
       setTotalMarks(selectedExam?.totalMarks);
+      // Reset student when exam changes (unless in edit mode and class matches)
+      if (!grade) {
+        setFormData(prev => ({ ...prev, studentId: '', [name]: value }));
+        return;
+      }
     }
 
     setFormData(prev => ({ ...prev, [name]: isNumber ? parseFloat(value) : value }));
@@ -54,13 +75,13 @@ const GradeForm = forwardRef<HTMLFormElement, GradeFormProps>(({ grade, students
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!formData.studentId) {
-        toast.error("Please select a student.");
+    if (!formData.examId) {
+        toast.error("Please select an exam first.");
         return;
     }
-    
-    if (!formData.examId) {
-        toast.error("Please select an exam.");
+
+    if (!formData.studentId) {
+        toast.error("Please select a student.");
         return;
     }
 
@@ -75,22 +96,15 @@ const GradeForm = forwardRef<HTMLFormElement, GradeFormProps>(({ grade, students
   return (
     <form ref={ref} onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-2">
-        <Label htmlFor="studentId">Student</Label>
-        {students.length > 0 ? (
-          <Select id="studentId" name="studentId" value={formData.studentId} onChange={handleChange} required>
-            {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.id})</option>)}
-          </Select>
-        ) : (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
-            No students available. Please add students first.
-          </div>
-        )}
-      </div>
-      <div className="space-y-2">
         <Label htmlFor="examId">Exam</Label>
         {exams.length > 0 ? (
-          <Select id="examId" name="examId" value={formData.examId} onChange={handleChange} required>
-            {exams.map(e => <option key={e.id} value={e.id}>{e.name} - {e.subject} (Class {e.class})</option>)}
+          <Select id="examId" name="examId" value={formData.examId} onChange={handleChange} required disabled={!!grade}>
+            <option value="">-- Select Exam --</option>
+            {exams.map(e => (
+              <option key={e.id} value={e.id}>
+                {e.name} - {e.subject} (Class {e.class})
+              </option>
+            ))}
           </Select>
         ) : (
           <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
@@ -98,6 +112,33 @@ const GradeForm = forwardRef<HTMLFormElement, GradeFormProps>(({ grade, students
           </div>
         )}
       </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="studentId">Student</Label>
+        <Select 
+            id="studentId" 
+            name="studentId" 
+            value={formData.studentId} 
+            onChange={handleChange} 
+            required 
+            disabled={!formData.examId || !!grade}
+        >
+            <option value="">
+                {!formData.examId ? "-- Select an Exam First --" : "-- Select Student --"}
+            </option>
+            {availableStudents.map(s => (
+                <option key={s.id} value={s.id}>
+                    {s.name} (Roll: {s.rollNumber}, Sec: {s.section})
+                </option>
+            ))}
+        </Select>
+        {formData.examId && availableStudents.length === 0 && (
+            <p className="text-xs text-red-500 mt-1">
+                No active students found in the class for this exam.
+            </p>
+        )}
+      </div>
+
       <div className="space-y-2">
         <Label htmlFor="marksObtained">Marks Obtained</Label>
         <div className="relative">

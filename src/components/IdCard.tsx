@@ -24,28 +24,12 @@ const Barcode: React.FC = () => (
   </div>
 );
 
-/**
- * Generates a deterministic 6-digit numeric string from a UUID.
- * @param uuid The UUID string.
- * @returns A 6-digit string.
- */
-const getNumericId = (uuid: string): string => {
-  if (!uuid) return '000000';
-  let hash = 0;
-  for (let i = 0; i < uuid.length; i++) {
-    const char = uuid.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash |= 0; // Convert to 32bit integer
-  }
-  const numericId = Math.abs(hash) % 1000000;
-  return String(numericId).padStart(6, '0');
-};
-
-
 const IdCard = React.forwardRef<HTMLDivElement, IdCardProps>(({ person, type, schoolName, schoolLogo }, ref) => {
   const isStudent = type === 'Student';
   const studentData = person as Student;
-  const displayId = getNumericId(person.id);
+  
+  // Use Roll Number for students, otherwise ID
+  const displayId = isStudent ? studentData.rollNumber : person.id.substring(0, 8).toUpperCase();
 
   const theme = {
     student: {
@@ -65,7 +49,7 @@ const IdCard = React.forwardRef<HTMLDivElement, IdCardProps>(({ person, type, sc
   const activeTheme = isStudent ? theme.student : theme.teacher;
 
   return (
-    <div ref={ref} className={`w-[512px] h-[300px] ${activeTheme.bg} rounded-2xl shadow-lg flex font-sans overflow-hidden`}>
+    <div ref={ref} className={`w-[512px] h-[300px] ${activeTheme.bg} rounded-2xl shadow-lg flex font-sans overflow-hidden print:break-inside-avoid mb-4 mx-auto`}>
       {/* Left Part */}
       <div className={`w-2/5 ${activeTheme.panelBg} p-5 flex flex-col justify-between items-center relative`}>
         {/* Angled edge effect */}
@@ -84,7 +68,7 @@ const IdCard = React.forwardRef<HTMLDivElement, IdCardProps>(({ person, type, sc
           </div>
         </div>
 
-        <div className={`relative z-10 w-32 h-32 rounded-full border-4 border-white bg-gray-200 flex items-center justify-center overflow-hidden`}>
+        <div className={`relative z-10 w-32 h-32 rounded-full border-4 border-white bg-gray-200 flex items-center justify-center overflow-hidden shadow-md`}>
           {person.avatar ? (
             <img src={person.avatar} alt={person.name} className="w-full h-full object-cover" />
           ) : (
@@ -95,7 +79,7 @@ const IdCard = React.forwardRef<HTMLDivElement, IdCardProps>(({ person, type, sc
         </div>
         
         <div className="relative z-10 h-8 text-center">
-           {/* Shift removed */}
+           {/* Spacer */}
         </div>
       </div>
 
@@ -106,22 +90,27 @@ const IdCard = React.forwardRef<HTMLDivElement, IdCardProps>(({ person, type, sc
         </div>
 
         <div className="flex-grow flex flex-col justify-center mt-2">
-          <h2 className="text-3xl font-extrabold leading-tight uppercase">{person.name.split(' ')[0]}</h2>
-          <h2 className="text-3xl font-extrabold leading-tight uppercase">{person.name.split(' ').slice(1).join(' ')}</h2>
+          <h2 className="text-2xl font-extrabold leading-tight uppercase truncate">{person.name}</h2>
           
           <div className="mt-6 space-y-2 text-sm">
               <div className="grid grid-cols-3">
-                  <p className="font-semibold text-gray-300 col-span-1">ID No.</p>
+                  <p className="font-semibold text-gray-300 col-span-1">{isStudent ? 'Roll No.' : 'ID No.'}</p>
                   <p className="font-medium col-span-2">{displayId}</p>
               </div>
               <div className="grid grid-cols-3">
-                  <p className="font-semibold text-gray-300 col-span-1">{isStudent ? 'Class' : 'Subject'}</p>
-                  <p className="font-medium col-span-2">{isStudent ? `${studentData.class}-${studentData.section}` : (person as Teacher).subject}</p>
+                  <p className="font-semibold text-gray-300 col-span-1">{isStudent ? 'Class' : 'Dept'}</p>
+                  <p className="font-medium col-span-2">{isStudent ? `${studentData.class} - ${studentData.section}` : (person as Teacher).subject}</p>
               </div>
               <div className="grid grid-cols-3">
                   <p className="font-semibold text-gray-300 col-span-1">D.O.B.</p>
                   <p className="font-medium col-span-2">{person.dob}</p>
               </div>
+              {isStudent && (
+                <div className="grid grid-cols-3">
+                    <p className="font-semibold text-gray-300 col-span-1">Phone</p>
+                    <p className="font-medium col-span-2">{person.phone || 'N/A'}</p>
+                </div>
+              )}
           </div>
         </div>
 
@@ -132,7 +121,6 @@ const IdCard = React.forwardRef<HTMLDivElement, IdCardProps>(({ person, type, sc
             </div>
             <div className="flex flex-col items-center">
                 <Barcode />
-                <p className="text-[8px] tracking-widest text-gray-400 mt-1">{displayId}</p>
             </div>
         </div>
       </div>

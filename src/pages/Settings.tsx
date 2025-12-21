@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, Bell, Lock, School, Landmark, GraduationCap, Image as ImageIcon, Copy } from 'lucide-react';
+import { Settings as SettingsIcon, Bell, Lock, School, Landmark, Copy } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useGlobal } from '../context/GlobalContext';
-import Modal from '../components/ui/Modal';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import ImageUpload from '../components/ui/ImageUpload';
+import Modal from '../components/ui/Modal';
+import ChangePasswordModal from '../components/users/ChangePasswordModal';
 
 const Settings: React.FC = () => {
   const { schoolName, schoolFee, academicYear, schoolLogo, updateSetting, profile } = useGlobal();
@@ -18,9 +19,8 @@ const Settings: React.FC = () => {
   
   const [localFee, setLocalFee] = useState<number>(schoolFee);
   const [isFeeSaved, setIsFeeSaved] = useState(false);
-
-  const [isPromoteModalOpen, setIsPromoteModalOpen] = useState(false);
-  const [isPromoting, setIsPromoting] = useState(false);
+  
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   useEffect(() => {
     setLocalName(schoolName);
@@ -62,7 +62,6 @@ const Settings: React.FC = () => {
         
         const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
         
-        // Update school record
         const { error: updateError } = await supabase
             .from('schools')
             .update({ logo_url: data.publicUrl })
@@ -75,25 +74,6 @@ const Settings: React.FC = () => {
     } catch (error: any) {
         toast.error(`Failed to update logo: ${error.message}`);
     }
-  };
-
-  const handlePromoteStudents = async () => {
-    setIsPromoting(true);
-    await toast.promise(
-      (async () => {
-        const { error } = await supabase.rpc('promote_all_students');
-        if (error) {
-          throw new Error(error.message || 'Unknown error occurred during promotion');
-        }
-      })(),
-      {
-        loading: 'Promoting students...',
-        success: 'All students promoted successfully! Data will refresh on next page load.',
-        error: (err) => `Failed to promote students: ${err.message}`,
-      }
-    );
-    setIsPromoting(false);
-    setIsPromoteModalOpen(false);
   };
 
   const copySchoolId = () => {
@@ -119,7 +99,6 @@ const Settings: React.FC = () => {
         </div>
         <div className="p-6 space-y-4 divide-y">
           
-          {/* School ID Display */}
           <div className="flex justify-between items-center pb-4">
             <div>
               <label className="font-medium text-gray-700">School ID</label>
@@ -198,22 +177,6 @@ const Settings: React.FC = () => {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="p-6 border-b">
-          <h3 className="text-lg font-semibold text-gray-800 flex items-center"><GraduationCap className="mr-3 h-5 w-5 text-purple-600"/>Academic Year Management</h3>
-        </div>
-        <div className="p-6 space-y-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <p className="font-medium text-gray-700">Promote Students</p>
-              <p className="text-sm text-gray-500">At the end of an academic year, this will advance all students to the next grade (e.g., Grade 9 to 10).</p>
-              <p className="text-sm font-bold text-red-600 mt-1">This action is irreversible.</p>
-            </div>
-            <Button variant="danger" onClick={() => setIsPromoteModalOpen(true)}>Promote Students</Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="p-6 border-b">
           <h3 className="text-lg font-semibold text-gray-800 flex items-center"><Landmark className="mr-3 h-5 w-5 text-green-600"/>Fee Settings</h3>
         </div>
         <div className="p-6 space-y-4">
@@ -264,37 +227,21 @@ const Settings: React.FC = () => {
           <div className="flex justify-between items-center">
             <div>
               <p className="font-medium text-gray-700">Password</p>
-              <p className="text-sm text-gray-500">Last changed 3 months ago.</p>
+              <p className="text-sm text-gray-500">Update your account password.</p>
             </div>
-            <Button variant="secondary">Change Password</Button>
-          </div>
-           <div className="flex justify-between items-center">
-            <div>
-              <p className="font-medium text-gray-700">Two-Factor Authentication</p>
-              <p className="text-sm text-gray-500">Add an extra layer of security.</p>
-            </div>
-            <Button variant="secondary">Enable</Button>
+            <Button variant="secondary" onClick={() => setIsPasswordModalOpen(true)}>Change Password</Button>
           </div>
         </div>
       </div>
 
       <Modal
-        isOpen={isPromoteModalOpen}
-        onClose={() => setIsPromoteModalOpen(false)}
-        title="Confirm Student Promotion"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setIsPromoteModalOpen(false)}>Cancel</Button>
-            <Button variant="danger" onClick={handlePromoteStudents} loading={isPromoting}>
-              Yes, Promote All
-            </Button>
-          </>
-        }
+        isOpen={isPasswordModalOpen}
+        onClose={() => setIsPasswordModalOpen(false)}
+        title="Change Password"
+        size="sm"
       >
-        <p>Are you sure you want to promote all students to their next grade? This will update the 'class' and 'grade' for every student in the system.</p>
-        <p className="font-bold text-red-600 mt-2">This action cannot be undone.</p>
+        <ChangePasswordModal onClose={() => setIsPasswordModalOpen(false)} />
       </Modal>
-
     </div>
   );
 };

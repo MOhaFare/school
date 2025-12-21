@@ -58,19 +58,23 @@ const OnlineExam: React.FC = () => {
   }, [profile]);
 
   const fetchExams = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
     try {
-      let query = supabase.from('online_exams').select('*').order('start_date', { ascending: false });
+      let query = supabase.from('online_exams').select('*').eq('school_id', profile.school_id).order('start_date', { ascending: false });
       
-      // If student, verify profile link
+      // If student, verify profile link and filter strictly
       let currentStudentId: string | null = null;
       if (profile?.role === 'student' && user) {
-         const { data: studentData } = await supabase.from('students').select('id, class, section').eq('user_id', user.id).single();
+         const { data: studentData } = await supabase.from('students').select('id, class, section').eq('user_id', user.id).eq('school_id', profile.school_id).single();
          if (studentData) {
              currentStudentId = studentData.id;
              setStudentId(studentData.id);
-             // Filter exams for student's class
-             query = query.eq('class', studentData.class).eq('status', 'published');
+             // Filter exams for student's class AND section
+             query = query
+                .eq('class', studentData.class)
+                .eq('section', studentData.section)
+                .eq('status', 'published');
          }
       }
 
@@ -162,11 +166,13 @@ const OnlineExam: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
+      
       if (selectedExam) {
-        const { error } = await supabase.from('online_exams').update(formData).eq('id', selectedExam.id);
+        const { error } = await supabase.from('online_exams').update(payload).eq('id', selectedExam.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('online_exams').insert(formData);
+        const { error } = await supabase.from('online_exams').insert(payload);
         if (error) throw error;
       }
       toast.success('Exam saved');

@@ -7,15 +7,20 @@ import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { Skeleton } from '../ui/Skeleton';
 import { formatCurrency } from '../../utils/format';
+import { useGlobal } from '../../context/GlobalContext';
 
 const OverviewReport: React.FC = () => {
+  const { profile } = useGlobal();
   const [reportData, setReportData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchReportData = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
       try {
+        const schoolId = profile.school_id;
+        
         const [
           studentRes,
           teacherRes,
@@ -28,16 +33,16 @@ const OverviewReport: React.FC = () => {
           libraryRes,
           hostelRes
         ] = await Promise.all([
-          supabase.from('students').select('*', { count: 'exact' }),
-          supabase.from('teachers').select('*', { count: 'exact' }),
-          supabase.from('grades').select('gpa'),
-          supabase.from('classes').select('name'),
-          supabase.from('fees').select('amount').eq('status', 'paid'),
-          supabase.from('payrolls').select('net_salary').eq('status', 'paid'),
-          supabase.from('incomes').select('amount'),
-          supabase.from('expenses').select('amount'),
-          supabase.from('library_books').select('quantity, available'),
-          supabase.from('hostel_rooms').select('capacity, occupants, status')
+          supabase.from('students').select('*', { count: 'exact' }).eq('school_id', schoolId),
+          supabase.from('teachers').select('*', { count: 'exact' }).eq('school_id', schoolId),
+          supabase.from('grades').select('gpa').eq('school_id', schoolId),
+          supabase.from('classes').select('name').eq('school_id', schoolId),
+          supabase.from('fees').select('amount').eq('status', 'paid').eq('school_id', schoolId),
+          supabase.from('payrolls').select('net_salary').eq('status', 'paid').eq('school_id', schoolId),
+          supabase.from('incomes').select('amount').eq('school_id', schoolId),
+          supabase.from('expenses').select('amount').eq('school_id', schoolId),
+          supabase.from('library_books').select('quantity, available').eq('school_id', schoolId),
+          supabase.from('hostel_rooms').select('capacity, occupants, status').eq('school_id', schoolId)
         ]);
 
         const students = studentRes.data || [];
@@ -92,7 +97,7 @@ const OverviewReport: React.FC = () => {
     };
 
     fetchReportData();
-  }, []);
+  }, [profile]);
 
   const netIncomeColor = reportData?.netIncome >= 0 ? 'text-emerald-600' : 'text-rose-600';
 

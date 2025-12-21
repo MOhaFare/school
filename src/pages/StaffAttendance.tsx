@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Plus, Edit, Trash2, Filter, Calendar } from 'lucide-react';
 import { Teacher } from '../types';
 import Modal from '../components/ui/Modal';
@@ -10,6 +10,7 @@ import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import { formatDate } from '../utils/format';
+import { useGlobal } from '../context/GlobalContext';
 
 interface StaffAttendanceRecord {
   id: string;
@@ -21,6 +22,7 @@ interface StaffAttendanceRecord {
 }
 
 const StaffAttendance: React.FC = () => {
+  const { profile } = useGlobal();
   const [records, setRecords] = useState<StaffAttendanceRecord[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +32,6 @@ const StaffAttendance: React.FC = () => {
   const [selectedRecord, setSelectedRecord] = useState<StaffAttendanceRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Form State
   const [formData, setFormData] = useState({
     teacher_id: '',
     date: new Date().toISOString().split('T')[0],
@@ -40,14 +41,15 @@ const StaffAttendance: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, [dateFilter]);
+  }, [dateFilter, profile]);
 
   const fetchData = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
     try {
       const [attendanceRes, teachersRes] = await Promise.all([
-        supabase.from('staff_attendance').select('*').eq('date', dateFilter),
-        supabase.from('teachers').select('id, name')
+        supabase.from('staff_attendance').select('*').eq('date', dateFilter).eq('school_id', profile.school_id),
+        supabase.from('teachers').select('id, name').eq('school_id', profile.school_id)
       ]);
 
       if (attendanceRes.error) throw attendanceRes.error;
@@ -105,11 +107,12 @@ const StaffAttendance: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
       if (selectedRecord) {
-        const { error } = await supabase.from('staff_attendance').update(formData).eq('id', selectedRecord.id);
+        const { error } = await supabase.from('staff_attendance').update(payload).eq('id', selectedRecord.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('staff_attendance').insert(formData);
+        const { error } = await supabase.from('staff_attendance').insert(payload);
         if (error) throw error;
       }
       toast.success('Attendance saved');

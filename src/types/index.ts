@@ -15,7 +15,7 @@ export interface Teacher {
   user_id?: string | null;
   shift?: 'Morning' | 'Afternoon';
   school_id?: string;
-  school_name?: string; // Added for display
+  school_name?: string;
 }
 
 export interface Student {
@@ -41,7 +41,7 @@ export interface Student {
   student_role?: string;
   shift?: 'Morning' | 'Afternoon';
   school_id?: string;
-  school_name?: string; // Added for display
+  school_name?: string;
   student_house?: string;
   category_id?: string;
 }
@@ -66,12 +66,14 @@ export interface Exam {
   name: string;
   subject: string;
   class: string;
+  section?: string; // Added section
   date: string;
   totalMarks: number;
   passingMarks: number;
   duration: string;
   status: 'upcoming' | 'ongoing' | 'completed';
   school_id?: string;
+  semester?: string;
 }
 
 export interface Grade {
@@ -89,6 +91,7 @@ export interface Grade {
   gpa: number;
   date: string;
   school_id?: string;
+  semester?: string;
 }
 
 export interface Payroll {

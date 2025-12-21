@@ -3,33 +3,27 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { supabase } from '../../lib/supabaseClient';
 import { Skeleton } from '../ui/Skeleton';
 import { formatCurrency } from '../../utils/format';
+import { useGlobal } from '../../context/GlobalContext';
 
 const FinanceReport: React.FC = () => {
+  const { profile } = useGlobal();
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
       const [fees, incomes, expenses, payrolls] = await Promise.all([
-        supabase.from('fees').select('amount, due_date').eq('status', 'paid'),
-        supabase.from('incomes').select('amount, date'),
-        supabase.from('expenses').select('amount, date'),
-        supabase.from('payrolls').select('net_salary, paid_date').eq('status', 'paid')
+        supabase.from('fees').select('amount, due_date').eq('status', 'paid').eq('school_id', profile.school_id),
+        supabase.from('incomes').select('amount, date').eq('school_id', profile.school_id),
+        supabase.from('expenses').select('amount, date').eq('school_id', profile.school_id),
+        supabase.from('payrolls').select('net_salary, paid_date').eq('status', 'paid').eq('school_id', profile.school_id)
       ]);
 
       // Aggregate by month (simplified)
       const monthlyData: any = {};
-      const process = (items: any[], key: string, dateKey: string) => {
-        items?.forEach(item => {
-          const date = new Date(item[dateKey]);
-          const month = date.toLocaleString('default', { month: 'short' });
-          if (!monthlyData[month]) monthlyData[month] = { name: month, income: 0, expense: 0 };
-          monthlyData[month][key === 'amount' || key === 'net_salary' ? (key === 'net_salary' || key === 'amount' && dateKey === 'date' && items === expenses.data ? 'expense' : 'income') : 'income'] += item[key] || item.amount || item.net_salary;
-        });
-      };
-
-      // Correct logic: Fees + Incomes = Income; Expenses + Payroll = Expense
+      
       const processIncome = (items: any[], dateKey: string) => {
          items?.forEach(item => {
             const date = new Date(item[dateKey]);
@@ -59,7 +53,7 @@ const FinanceReport: React.FC = () => {
       setLoading(false);
     };
     fetchData();
-  }, []);
+  }, [profile]);
 
   if (loading) return <Skeleton className="h-96 w-full" />;
 

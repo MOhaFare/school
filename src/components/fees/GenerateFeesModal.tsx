@@ -1,220 +1,153 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabaseClient';
+import { useGlobal } from '../../context/GlobalContext';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
 import { Label } from '../ui/Label';
 import { Select } from '../ui/Select';
+import { Input } from '../ui/Input';
 import toast from 'react-hot-toast';
-import { useGlobal } from '../../context/GlobalContext';
-import { Calendar, Users, AlertCircle } from 'lucide-react';
 
 interface GenerateFeesModalProps {
   onClose: () => void;
   onSuccess: () => void;
 }
 
-const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
 const GenerateFeesModal: React.FC<GenerateFeesModalProps> = ({ onClose, onSuccess }) => {
-  const { schoolFee } = useGlobal();
+  const { profile } = useGlobal();
   const [loading, setLoading] = useState(false);
+  const [feeMasters, setFeeMasters] = useState<any[]>([]);
   
-  // Form State
-  const [generationType, setGenerationType] = useState<'single' | 'year'>('single');
-  const [selectedClass, setSelectedClass] = useState('all');
-  const [selectedMonth, setSelectedMonth] = useState(months[new Date().getMonth()]);
-  const [year, setYear] = useState(new Date().getFullYear());
-  const [amount, setAmount] = useState(schoolFee);
+  const [selectedFeeId, setSelectedFeeId] = useState('');
+  const [month, setMonth] = useState(new Date().toLocaleString('default', { month: 'long' }));
   const [dueDate, setDueDate] = useState('');
-  const [classes, setClasses] = useState<string[]>([]);
-  const [studentCount, setStudentCount] = useState<number | null>(null);
-
-  // Update amount if global schoolFee changes
-  useEffect(() => {
-    setAmount(schoolFee);
-  }, [schoolFee]);
+  
+  // Stats
+  const [targetGrade, setTargetGrade] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchClasses = async () => {
-      const { data } = await supabase.from('classes').select('name').order('name');
-      if (data) setClasses(data.map(c => c.name));
+    const fetchMasters = async () => {
+      if (!profile?.school_id) return;
+      const { data } = await supabase
+        .from('fee_masters')
+        .select('*')
+        .eq('school_id', profile.school_id)
+        .order('name');
+      setFeeMasters(data || []);
     };
-    fetchClasses();
-    
-    // Set default due date to the 5th of next month
-    const date = new Date();
-    const nextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 5);
-    setDueDate(nextMonth.toISOString().split('T')[0]);
-  }, []);
+    fetchMasters();
+  }, [profile]);
 
-  // Estimate student count when class changes
+  // When fee type changes, check if it's grade specific
   useEffect(() => {
-    const estimateStudents = async () => {
-      let query = supabase.from('students').select('id', { count: 'exact', head: true }).eq('status', 'active');
-      
-      if (selectedClass !== 'all') {
-        const parts = selectedClass.split('-');
-        if (parts.length >= 1) query = query.eq('class', parts[0]);
-        if (parts.length >= 2) query = query.eq('section', parts[1]);
-      }
-      
-      const { count } = await query;
-      setStudentCount(count);
-    };
-    estimateStudents();
-  }, [selectedClass]);
+    const fee = feeMasters.find(f => f.id === selectedFeeId);
+    if (fee && fee.grade) {
+      setTargetGrade(fee.grade);
+    } else {
+      setTargetGrade(null);
+    }
+  }, [selectedFeeId, feeMasters]);
 
   const handleGenerate = async () => {
+    if (!selectedFeeId || !dueDate) {
+      toast.error('Please select a fee type and due date');
+      return;
+    }
+
     setLoading(true);
     try {
-      // 1. Fetch Active Students
-      let query = supabase.from('students').select('id, name, class, section').eq('status', 'active');
-      
-      if (selectedClass !== 'all') {
-        const parts = selectedClass.split('-');
-        if (parts.length >= 1) query = query.eq('class', parts[0]);
-        if (parts.length >= 2) query = query.eq('section', parts[1]);
+      const feeType = feeMasters.find(f => f.id === selectedFeeId);
+      if (!feeType) throw new Error('Invalid fee type');
+
+      // 1. Fetch Students
+      let query = supabase
+        .from('students')
+        .select('id, name, grade')
+        .eq('school_id', profile?.school_id)
+        .eq('status', 'active');
+
+      // If fee is grade-specific, filter students
+      if (feeType.grade) {
+        query = query.eq('grade', feeType.grade);
       }
-      
+
       const { data: students, error: studentError } = await query;
       if (studentError) throw studentError;
-      
+
       if (!students || students.length === 0) {
-        toast.error("No active students found for the selected criteria.");
+        toast.error(feeType.grade ? `No active students found in ${feeType.grade}` : 'No active students found');
         setLoading(false);
         return;
       }
 
       // 2. Prepare Fee Records
-      const feesToInsert: any[] = [];
+      const feesToInsert = students.map(student => ({
+        student_id: student.id,
+        amount: feeType.amount,
+        description: `${feeType.name} - ${month}`,
+        due_date: dueDate,
+        status: 'unpaid',
+        school_id: profile?.school_id,
+        month: month, // Store month to prevent duplicates later
+        payment_mode: null,
+        remarks: null
+      }));
+
+      // 3. Insert (Skip duplicates logic should ideally be here, but for now we insert)
+      // Ideally we check if fee exists for student+month+description
       
-      if (generationType === 'single') {
-        // Generate for single month
-        students.forEach(student => {
-          feesToInsert.push({
-            student_id: student.id,
-            description: `Tuition Fee - ${selectedMonth} ${year}`,
-            amount,
-            due_date: dueDate,
-            status: 'unpaid',
-            month: selectedMonth,
-          });
-        });
-      } else {
-        // Generate for FULL YEAR (all 12 months)
-        students.forEach(student => {
-          months.forEach((month, index) => {
-            // Calculate due date for each month (e.g., 5th of each month)
-            const monthDueDate = new Date(year, index, 5).toISOString().split('T')[0];
-            
-            feesToInsert.push({
-              student_id: student.id,
-              description: `Tuition Fee - ${month} ${year}`,
-              amount,
-              due_date: monthDueDate,
-              status: 'unpaid',
-              month: month,
-            });
-          });
-        });
-      }
+      const { error: insertError } = await supabase.from('fees').insert(feesToInsert);
+      if (insertError) throw insertError;
 
-      // 3. Insert in batches
-      const BATCH_SIZE = 100;
-      for (let i = 0; i < feesToInsert.length; i += BATCH_SIZE) {
-        const batch = feesToInsert.slice(i, i + BATCH_SIZE);
-        const { error: insertError } = await supabase.from('fees').insert(batch);
-        if (insertError) throw insertError;
-      }
-
-      toast.success(`Successfully generated ${feesToInsert.length} fee records for ${students.length} students.`);
+      toast.success(`Generated fees for ${students.length} students!`);
       onSuccess();
       onClose();
 
     } catch (error: any) {
-      toast.error(`Error generating fees: ${error.message}`);
+      toast.error(`Failed to generate: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-        <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
-        <div>
-          <h4 className="text-sm font-semibold text-blue-800">Monthly Tuition Fee Generation</h4>
-          <p className="text-xs text-blue-600 mt-1">
-            This will create fee records based on the Base Fee ({schoolFee} Birr) for {studentCount !== null ? <strong>{studentCount}</strong> : 'all'} active students. 
-          </p>
-        </div>
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>Select Fee Type</Label>
+        <Select value={selectedFeeId} onChange={(e) => setSelectedFeeId(e.target.value)}>
+          <option value="">-- Select Fee --</option>
+          {feeMasters.map(fee => (
+            <option key={fee.id} value={fee.id}>
+              {fee.name} ({fee.grade || 'All Grades'}) - ${fee.amount}
+            </option>
+          ))}
+        </Select>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Generation Type</Label>
-          <div className="flex bg-gray-100 p-1 rounded-lg">
-            <button
-              type="button"
-              onClick={() => setGenerationType('single')}
-              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${generationType === 'single' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Single Month
-            </button>
-            <button
-              type="button"
-              onClick={() => setGenerationType('year')}
-              className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${generationType === 'year' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              Full Year
-            </button>
-          </div>
+      {targetGrade && (
+        <div className="p-3 bg-blue-50 text-blue-700 rounded-md text-sm border border-blue-100">
+          <strong>Note:</strong> This fee will only be applied to students in <strong>{targetGrade}</strong>.
         </div>
+      )}
 
+      <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Target Class</Label>
-          <Select value={selectedClass} onChange={e => setSelectedClass(e.target.value)}>
-            <option value="all">All Classes</option>
-            {classes.map(c => <option key={c} value={c}>{c}</option>)}
+          <Label>For Month</Label>
+          <Select value={month} onChange={(e) => setMonth(e.target.value)}>
+            {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map(m => (
+              <option key={m} value={m}>{m}</option>
+            ))}
           </Select>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Academic Year</Label>
-          <Input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} />
+          <Label>Due Date</Label>
+          <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
         </div>
-        
-        {generationType === 'single' && (
-          <div className="space-y-2">
-            <Label>Month</Label>
-            <Select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
-              {months.map(m => <option key={m} value={m}>{m}</option>)}
-            </Select>
-          </div>
-        )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Amount (Birr)</Label>
-          <Input type="number" value={amount} onChange={e => setAmount(parseFloat(e.target.value))} />
-          <p className="text-xs text-gray-500 mt-1">Default: {schoolFee} (Base Fee)</p>
-        </div>
-        
-        {generationType === 'single' && (
-          <div className="space-y-2">
-            <Label>Due Date</Label>
-            <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} />
-          </div>
-        )}
-      </div>
-
-      <div className="flex justify-end gap-2 pt-4 border-t">
+      <div className="flex justify-end gap-2 pt-4">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
-        <Button onClick={handleGenerate} loading={loading}>
-          {generationType === 'single' ? 'Generate Monthly Fees' : 'Generate Full Year Fees'}
+        <Button onClick={handleGenerate} loading={loading} disabled={!selectedFeeId}>
+          Generate Fees
         </Button>
       </div>
     </div>

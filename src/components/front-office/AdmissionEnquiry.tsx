@@ -10,8 +10,10 @@ import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import Badge from '../ui/Badge';
 import { formatDate } from '../../utils/format';
+import { useGlobal } from '../../context/GlobalContext';
 
 const AdmissionEnquiry: React.FC = () => {
+  const { profile } = useGlobal();
   const [enquiries, setEnquiries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -25,11 +27,17 @@ const AdmissionEnquiry: React.FC = () => {
 
   useEffect(() => {
     fetchEnquiries();
-  }, []);
+  }, [profile]);
 
   const fetchEnquiries = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
-    const { data, error } = await supabase.from('admission_enquiries').select('*').order('date', { ascending: false });
+    const { data, error } = await supabase
+      .from('admission_enquiries')
+      .select('*')
+      .eq('school_id', profile.school_id)
+      .order('date', { ascending: false });
+      
     if (error) toast.error('Failed to load enquiries');
     else setEnquiries(data || []);
     setLoading(false);
@@ -52,11 +60,13 @@ const AdmissionEnquiry: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
+      
       if (selectedEnquiry) {
-        const { error } = await supabase.from('admission_enquiries').update(formData).eq('id', selectedEnquiry.id);
+        const { error } = await supabase.from('admission_enquiries').update(payload).eq('id', selectedEnquiry.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('admission_enquiries').insert(formData);
+        const { error } = await supabase.from('admission_enquiries').insert(payload);
         if (error) throw error;
       }
       toast.success('Enquiry saved');

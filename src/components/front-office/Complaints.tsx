@@ -10,8 +10,10 @@ import { supabase } from '../../lib/supabaseClient';
 import toast from 'react-hot-toast';
 import Badge from '../ui/Badge';
 import { formatDate } from '../../utils/format';
+import { useGlobal } from '../../context/GlobalContext';
 
 const Complaints: React.FC = () => {
+  const { profile } = useGlobal();
   const [complaints, setComplaints] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,11 +26,17 @@ const Complaints: React.FC = () => {
 
   useEffect(() => {
     fetchComplaints();
-  }, []);
+  }, [profile]);
 
   const fetchComplaints = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
-    const { data, error } = await supabase.from('complaints').select('*').order('date', { ascending: false });
+    const { data, error } = await supabase
+      .from('complaints')
+      .select('*')
+      .eq('school_id', profile.school_id)
+      .order('date', { ascending: false });
+      
     if (error) toast.error('Failed to load complaints');
     else setComplaints(data || []);
     setLoading(false);
@@ -50,11 +58,13 @@ const Complaints: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = { ...formData, school_id: profile?.school_id };
+      
       if (selectedComplaint) {
-        const { error } = await supabase.from('complaints').update(formData).eq('id', selectedComplaint.id);
+        const { error } = await supabase.from('complaints').update(payload).eq('id', selectedComplaint.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('complaints').insert(formData);
+        const { error } = await supabase.from('complaints').insert(payload);
         if (error) throw error;
       }
       toast.success('Complaint saved');

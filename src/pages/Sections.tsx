@@ -7,6 +7,7 @@ import Modal from '../components/ui/Modal';
 import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useGlobal } from '../context/GlobalContext';
 
 interface Section {
   id: string;
@@ -14,6 +15,7 @@ interface Section {
 }
 
 const Sections: React.FC = () => {
+  const { profile } = useGlobal();
   const [sections, setSections] = useState<Section[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setModalOpen] = useState(false);
@@ -23,11 +25,17 @@ const Sections: React.FC = () => {
 
   useEffect(() => {
     fetchSections();
-  }, []);
+  }, [profile]);
 
   const fetchSections = async () => {
+    if (!profile?.school_id) return;
     setLoading(true);
-    const { data, error } = await supabase.from('sections').select('*').order('name');
+    const { data, error } = await supabase
+      .from('sections')
+      .select('*')
+      .eq('school_id', profile.school_id)
+      .order('name');
+      
     if (error) toast.error('Failed to load sections');
     else setSections(data || []);
     setLoading(false);
@@ -47,7 +55,10 @@ const Sections: React.FC = () => {
         const { error } = await supabase.from('sections').update({ name: sectionName }).eq('id', selectedSection.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('sections').insert({ name: sectionName });
+        const { error } = await supabase.from('sections').insert({ 
+            name: sectionName,
+            school_id: profile?.school_id
+        });
         if (error) throw error;
       }
       toast.success('Section saved successfully');

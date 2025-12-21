@@ -7,8 +7,10 @@ import BookForm from '../components/library/BookForm';
 import TableSkeleton from '../components/ui/TableSkeleton';
 import { supabase } from '../lib/supabaseClient';
 import toast from 'react-hot-toast';
+import { useGlobal } from '../context/GlobalContext';
 
 const Library: React.FC = () => {
+  const { profile } = useGlobal();
   const [libraryBooks, setLibraryBooks] = useState<LibraryBook[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,21 +23,26 @@ const Library: React.FC = () => {
 
   useEffect(() => {
     const fetchBooks = async () => {
+      if (!profile?.school_id) return;
       setLoading(true);
       try {
-        const { data, error } = await supabase.from('library_books').select('*').order('title');
+        const { data, error } = await supabase
+          .from('library_books')
+          .select('*')
+          .eq('school_id', profile.school_id)
+          .order('title');
+          
         if (error) throw error;
         setLibraryBooks(data);
       } catch (error: any) {
         const errorMessage = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
         toast.error(`Failed to fetch books: ${errorMessage}`);
-        console.error("Error fetching library books:", error);
       } finally {
         setLoading(false);
       }
     };
     fetchBooks();
-  }, []);
+  }, [profile]);
 
   const filteredBooks = libraryBooks.filter(book =>
     book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -66,6 +73,7 @@ const Library: React.FC = () => {
           ...formData,
           available: formData.quantity,
           status: formData.quantity > 0 ? 'available' : 'unavailable',
+          school_id: profile?.school_id
         };
 
         if (formData.id) {

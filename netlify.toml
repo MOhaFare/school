@@ -1,0 +1,10 @@
+# Netlify Configuration
+[build]
+  command = "yarn build"
+  publish = "dist"
+
+# Handle React Router (Single Page Application)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
