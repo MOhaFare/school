@@ -1,54 +1,49 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
-import { Skeleton } from '../ui/Skeleton';
 import { useGlobal } from '../../context/GlobalContext';
 
 const TransportReport: React.FC = () => {
   const { profile } = useGlobal();
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [vehicles, setVehicles] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!profile?.school_id) return;
-      setLoading(true);
-      const { data: vehicles } = await supabase
+      const { data } = await supabase
         .from('transport_vehicles')
-        .select('vehicle_number, capacity, student_count')
-        .eq('school_id', profile.school_id);
-      
-      if (vehicles) {
-        const chartData = vehicles.map((v: any) => ({
-          name: v.vehicle_number,
-          capacity: v.capacity,
-          occupied: v.student_count
-        }));
-        setData(chartData);
-      }
-      setLoading(false);
+        .select('*')
+        .eq('school_id', profile.school_id)
+        .order('vehicle_number');
+      setVehicles(data || []);
     };
     fetchData();
   }, [profile]);
 
-  if (loading) return <Skeleton className="h-96 w-full" />;
-
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-      <h3 className="text-lg font-bold text-slate-900 mb-4">Vehicle Capacity vs Occupancy</h3>
-      <div className="h-96">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey="capacity" fill="#94a3b8" name="Total Capacity" />
-            <Bar dataKey="occupied" fill="#0ea5e9" name="Occupied Seats" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-4 bg-slate-50 border-b border-slate-200">
+            <h3 className="font-semibold text-slate-800">Transport Fleet</h3>
+        </div>
+        <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+                <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Vehicle No</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Driver</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Route</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Capacity</th>
+                </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-slate-200">
+                {vehicles.map((v, idx) => (
+                    <tr key={idx}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{v.vehicle_number}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{v.driver_name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{v.route}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{v.student_count} / {v.capacity}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
     </div>
   );
 };

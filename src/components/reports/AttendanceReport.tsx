@@ -1,69 +1,55 @@
 import React, { useEffect, useState } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
-import { Skeleton } from '../ui/Skeleton';
 import { useGlobal } from '../../context/GlobalContext';
+import { formatDate } from '../../utils/format';
 
 const AttendanceReport: React.FC = () => {
   const { profile } = useGlobal();
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!profile?.school_id) return;
-      setLoading(true);
-      const { data: attendance } = await supabase
+      const { data } = await supabase
         .from('attendance')
-        .select('date, status')
-        .eq('school_id', profile.school_id);
-      
-      if (attendance) {
-        const dailyStats: any = {};
-        attendance.forEach((record: any) => {
-          const date = record.date;
-          if (!dailyStats[date]) dailyStats[date] = { date, present: 0, total: 0 };
-          dailyStats[date].total++;
-          if (record.status === 'present') dailyStats[date].present++;
-        });
-
-        const chartData = Object.values(dailyStats)
-          .map((d: any) => ({ 
-            date: d.date, 
-            rate: Math.round((d.present / d.total) * 100) 
-          }))
-          .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
-          .slice(-30); // Last 30 days
-
-        setData(chartData);
-      }
-      setLoading(false);
+        .select('date, status, class, students(name)')
+        .eq('school_id', profile.school_id)
+        .order('date', { ascending: false })
+        .limit(20);
+      setLogs(data || []);
     };
     fetchData();
   }, [profile]);
 
-  if (loading) return <Skeleton className="h-96 w-full" />;
-
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-      <h3 className="text-lg font-bold text-slate-900 mb-4">Daily Attendance Rate (Last 30 Days)</h3>
-      <div className="h-96">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data}>
-            <defs>
-              <linearGradient id="colorRate" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.8}/>
-                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="date" tickFormatter={(str) => new Date(str).toLocaleDateString(undefined, {month:'short', day:'numeric'})} />
-            <YAxis domain={[0, 100]} />
-            <Tooltip labelFormatter={(str) => new Date(str).toLocaleDateString()} formatter={(val) => `${val}%`} />
-            <Area type="monotone" dataKey="rate" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorRate)" />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-4 bg-slate-50 border-b border-slate-200">
+            <h3 className="font-semibold text-slate-800">Recent Attendance Logs</h3>
+        </div>
+        <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+                <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Student</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Class</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
+                </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-slate-200">
+                {logs.map((log, idx) => (
+                    <tr key={idx}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{formatDate(log.date)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{log.students?.name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{log.class}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 text-xs rounded-full ${log.status === 'present' ? 'bg-green-100 text-green-800' : log.status === 'absent' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                                {log.status}
+                            </span>
+                        </td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
     </div>
   );
 };

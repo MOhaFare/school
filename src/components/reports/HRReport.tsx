@@ -1,57 +1,52 @@
 import React, { useEffect, useState } from 'react';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
-import { Skeleton } from '../ui/Skeleton';
 import { useGlobal } from '../../context/GlobalContext';
-
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+import { formatCurrency } from '../../utils/format';
 
 const HRReport: React.FC = () => {
   const { profile } = useGlobal();
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [staff, setStaff] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!profile?.school_id) return;
-      setLoading(true);
-      const { data: teachers } = await supabase
+      const { data } = await supabase
         .from('teachers')
-        .select('subject')
-        .eq('school_id', profile.school_id);
-      
-      if (teachers) {
-        const subjectCounts = teachers.reduce((acc: any, curr: any) => {
-          acc[curr.subject] = (acc[curr.subject] || 0) + 1;
-          return acc;
-        }, {});
-        
-        const chartData = Object.keys(subjectCounts).map(key => ({ name: key, value: subjectCounts[key] }));
-        setData(chartData);
-      }
-      setLoading(false);
+        .select('name, subject, phone, salary, status')
+        .eq('school_id', profile.school_id)
+        .order('name');
+      setStaff(data || []);
     };
     fetchData();
   }, [profile]);
 
-  if (loading) return <Skeleton className="h-96 w-full" />;
-
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-      <h3 className="text-lg font-bold text-slate-900 mb-4">Teacher Distribution by Subject</h3>
-      <div className="h-96">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={data} cx="50%" cy="50%" outerRadius={100} fill="#8884d8" dataKey="value" label>
-              {data.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
-      </div>
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-4 bg-slate-50 border-b border-slate-200">
+            <h3 className="font-semibold text-slate-800">Staff Directory</h3>
+        </div>
+        <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+                <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Subject</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Phone</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Salary</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Status</th>
+                </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-slate-200">
+                {staff.map((s, idx) => (
+                    <tr key={idx}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{s.name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{s.subject}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{s.phone}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{formatCurrency(s.salary)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm capitalize text-slate-600">{s.status}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
     </div>
   );
 };

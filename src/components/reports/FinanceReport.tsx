@@ -1,77 +1,70 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
-import { Skeleton } from '../ui/Skeleton';
-import { formatCurrency } from '../../utils/format';
 import { useGlobal } from '../../context/GlobalContext';
+import FinancialSummaryChart from './FinancialSummaryChart';
+import { formatCurrency } from '../../utils/format';
 
 const FinanceReport: React.FC = () => {
   const { profile } = useGlobal();
   const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [totals, setTotal] = useState({ fees: 0, income: 0, expenses: 0, payroll: 0 });
 
   useEffect(() => {
     const fetchData = async () => {
       if (!profile?.school_id) return;
-      setLoading(true);
-      const [fees, incomes, expenses, payrolls] = await Promise.all([
-        supabase.from('fees').select('amount, due_date').eq('status', 'paid').eq('school_id', profile.school_id),
-        supabase.from('incomes').select('amount, date').eq('school_id', profile.school_id),
-        supabase.from('expenses').select('amount, date').eq('school_id', profile.school_id),
-        supabase.from('payrolls').select('net_salary, paid_date').eq('status', 'paid').eq('school_id', profile.school_id)
+      const [fees, incomes, expenses, payroll] = await Promise.all([
+        supabase.from('fees').select('amount').eq('status', 'paid').eq('school_id', profile.school_id),
+        supabase.from('incomes').select('amount').eq('school_id', profile.school_id),
+        supabase.from('expenses').select('amount').eq('school_id', profile.school_id),
+        supabase.from('payrolls').select('net_salary').eq('status', 'paid').eq('school_id', profile.school_id)
       ]);
 
-      // Aggregate by month (simplified)
-      const monthlyData: any = {};
-      
-      const processIncome = (items: any[], dateKey: string) => {
-         items?.forEach(item => {
-            const date = new Date(item[dateKey]);
-            const month = date.toLocaleString('default', { month: 'short' });
-            if (!monthlyData[month]) monthlyData[month] = { name: month, income: 0, expense: 0 };
-            monthlyData[month].income += item.amount;
-         });
-      };
-      const processExpense = (items: any[], amountKey: string, dateKey: string) => {
-         items?.forEach(item => {
-            const date = new Date(item[dateKey]);
-            const month = date.toLocaleString('default', { month: 'short' });
-            if (!monthlyData[month]) monthlyData[month] = { name: month, income: 0, expense: 0 };
-            monthlyData[month].expense += item[amountKey];
-         });
-      };
+      const feeTotal = fees.data?.reduce((sum, i) => sum + i.amount, 0) || 0;
+      const incomeTotal = incomes.data?.reduce((sum, i) => sum + i.amount, 0) || 0;
+      const expenseTotal = expenses.data?.reduce((sum, i) => sum + i.amount, 0) || 0;
+      const payrollTotal = payroll.data?.reduce((sum, i) => sum + i.net_salary, 0) || 0;
 
-      processIncome(fees.data || [], 'due_date');
-      processIncome(incomes.data || [], 'date');
-      processExpense(expenses.data || [], 'amount', 'date');
-      processExpense(payrolls.data || [], 'net_salary', 'paid_date');
+      setTotal({ fees: feeTotal, income: incomeTotal, expenses: expenseTotal, payroll: payrollTotal });
 
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const chartData = months.map(m => monthlyData[m] || { name: m, income: 0, expense: 0 });
-      
-      setData(chartData);
-      setLoading(false);
+      setData([
+        { name: 'Fees', value: feeTotal, fill: '#10b981' },
+        { name: 'Other Income', value: incomeTotal, fill: '#3b82f6' },
+        { name: 'Expenses', value: expenseTotal, fill: '#f59e0b' },
+        { name: 'Payroll', value: payrollTotal, fill: '#ef4444' },
+      ]);
     };
     fetchData();
   }, [profile]);
 
-  if (loading) return <Skeleton className="h-96 w-full" />;
-
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-      <h3 className="text-lg font-bold text-slate-900 mb-4">Monthly Financial Overview</h3>
-      <div className="h-96">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip formatter={(value: number) => formatCurrency(value)} />
-            <Legend />
-            <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <FinancialSummaryChart data={data} />
+      <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-6">
+        <h3 className="text-lg font-bold text-slate-900 mb-4">Financial Breakdown</h3>
+        <div className="space-y-4">
+            <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                <span className="text-green-800 font-medium">Fees Collected</span>
+                <span className="text-green-900 font-bold">{formatCurrency(totals.fees)}</span>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-blue-50 rounded-lg">
+                <span className="text-blue-800 font-medium">Other Income</span>
+                <span className="text-blue-900 font-bold">{formatCurrency(totals.income)}</span>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-yellow-50 rounded-lg">
+                <span className="text-yellow-800 font-medium">Operational Expenses</span>
+                <span className="text-yellow-900 font-bold">{formatCurrency(totals.expenses)}</span>
+            </div>
+            <div className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+                <span className="text-red-800 font-medium">Payroll Expenses</span>
+                <span className="text-red-900 font-bold">{formatCurrency(totals.payroll)}</span>
+            </div>
+            <div className="border-t pt-4 mt-4 flex justify-between items-center">
+                <span className="text-slate-800 font-bold">Net Balance</span>
+                <span className={`text-xl font-bold ${(totals.fees + totals.income) - (totals.expenses + totals.payroll) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatCurrency((totals.fees + totals.income) - (totals.expenses + totals.payroll))}
+                </span>
+            </div>
+        </div>
       </div>
     </div>
   );

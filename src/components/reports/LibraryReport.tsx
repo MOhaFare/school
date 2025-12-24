@@ -1,54 +1,49 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
-import { Skeleton } from '../ui/Skeleton';
 import { useGlobal } from '../../context/GlobalContext';
 
 const LibraryReport: React.FC = () => {
   const { profile } = useGlobal();
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [books, setBooks] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!profile?.school_id) return;
-      setLoading(true);
-      const { data: books } = await supabase
+      const { data } = await supabase
         .from('library_books')
-        .select('genre, quantity')
-        .eq('school_id', profile.school_id);
-      
-      if (books) {
-        const genreStats: any = {};
-        books.forEach((b: any) => {
-          if (!genreStats[b.genre]) genreStats[b.genre] = 0;
-          genreStats[b.genre] += b.quantity;
-        });
-
-        const chartData = Object.keys(genreStats).map(key => ({ name: key, count: genreStats[key] }));
-        setData(chartData);
-      }
-      setLoading(false);
+        .select('*')
+        .eq('school_id', profile.school_id)
+        .order('title');
+      setBooks(data || []);
     };
     fetchData();
   }, [profile]);
 
-  if (loading) return <Skeleton className="h-96 w-full" />;
-
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-      <h3 className="text-lg font-bold text-slate-900 mb-4">Book Collection by Genre</h3>
-      <div className="h-96">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} layout="vertical" margin={{ left: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-            <XAxis type="number" />
-            <YAxis dataKey="name" type="category" width={100} />
-            <Tooltip />
-            <Bar dataKey="count" fill="#ec4899" radius={[0, 4, 4, 0]} name="Book Count" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-4 bg-slate-50 border-b border-slate-200">
+            <h3 className="font-semibold text-slate-800">Library Inventory</h3>
+        </div>
+        <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+                <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Title</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Author</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Genre</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Available</th>
+                </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-slate-200">
+                {books.map((b, idx) => (
+                    <tr key={idx}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{b.title}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{b.author}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{b.genre}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{b.available} / {b.quantity}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
     </div>
   );
 };

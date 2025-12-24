@@ -1,55 +1,50 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
-import { Skeleton } from '../ui/Skeleton';
-import { formatCurrency } from '../../utils/format';
 import { useGlobal } from '../../context/GlobalContext';
+import { formatCurrency } from '../../utils/format';
 
 const InventoryReport: React.FC = () => {
   const { profile } = useGlobal();
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!profile?.school_id) return;
-      setLoading(true);
-      const { data: items } = await supabase
+      const { data } = await supabase
         .from('inventory_items')
-        .select('category, quantity, unit_price')
-        .eq('school_id', profile.school_id);
-      
-      if (items) {
-        const categoryStats: any = {};
-        items.forEach((i: any) => {
-          if (!categoryStats[i.category]) categoryStats[i.category] = 0;
-          categoryStats[i.category] += (i.quantity * i.unit_price);
-        });
-
-        const chartData = Object.keys(categoryStats).map(key => ({ name: key, value: categoryStats[key] }));
-        setData(chartData);
-      }
-      setLoading(false);
+        .select('*')
+        .eq('school_id', profile.school_id)
+        .order('name');
+      setItems(data || []);
     };
     fetchData();
   }, [profile]);
 
-  if (loading) return <Skeleton className="h-96 w-full" />;
-
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-      <h3 className="text-lg font-bold text-slate-900 mb-4">Inventory Value by Category</h3>
-      <div className="h-96">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip formatter={(val: number) => formatCurrency(val)} />
-            <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} name="Total Value" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-4 bg-slate-50 border-b border-slate-200">
+            <h3 className="font-semibold text-slate-800">Inventory Stock</h3>
+        </div>
+        <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+                <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Item Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Category</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Quantity</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Unit Price</th>
+                </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-slate-200">
+                {items.map((i, idx) => (
+                    <tr key={idx}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{i.name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 capitalize">{i.category}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{i.quantity}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{formatCurrency(i.unit_price)}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
     </div>
   );
 };

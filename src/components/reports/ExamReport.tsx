@@ -1,60 +1,52 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { supabase } from '../../lib/supabaseClient';
-import { Skeleton } from '../ui/Skeleton';
 import { useGlobal } from '../../context/GlobalContext';
 
 const ExamReport: React.FC = () => {
   const { profile } = useGlobal();
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [results, setResults] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!profile?.school_id) return;
-      setLoading(true);
-      const { data: grades } = await supabase
+      const { data } = await supabase
         .from('grades')
-        .select('gpa, exams(name)')
-        .eq('school_id', profile.school_id);
-      
-      if (grades) {
-        const examStats: any = {};
-        grades.forEach((g: any) => {
-          const examName = g.exams?.name || 'Unknown';
-          if (!examStats[examName]) examStats[examName] = { name: examName, totalGpa: 0, count: 0 };
-          examStats[examName].totalGpa += g.gpa;
-          examStats[examName].count++;
-        });
-
-        const chartData = Object.values(examStats).map((e: any) => ({
-          name: e.name,
-          avgGpa: parseFloat((e.totalGpa / e.count).toFixed(2))
-        }));
-
-        setData(chartData);
-      }
-      setLoading(false);
+        .select('grade, marks_obtained, students(name), exams(name, subject, total_marks)')
+        .eq('school_id', profile.school_id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setResults(data || []);
     };
     fetchData();
   }, [profile]);
 
-  if (loading) return <Skeleton className="h-96 w-full" />;
-
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-      <h3 className="text-lg font-bold text-slate-900 mb-4">Average GPA by Exam</h3>
-      <div className="h-96">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="name" />
-            <YAxis domain={[0, 4]} />
-            <Tooltip />
-            <Bar dataKey="avgGpa" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Average GPA" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-4 bg-slate-50 border-b border-slate-200">
+            <h3 className="font-semibold text-slate-800">Recent Exam Results</h3>
+        </div>
+        <table className="min-w-full divide-y divide-slate-200">
+            <thead className="bg-slate-50">
+                <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Student</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Exam</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Subject</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Score</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase">Grade</th>
+                </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-slate-200">
+                {results.map((r, idx) => (
+                    <tr key={idx}>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{r.students?.name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{r.exams?.name}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{r.exams?.subject}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600">{r.marks_obtained} / {r.exams?.total_marks}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600">{r.grade}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
     </div>
   );
 };
